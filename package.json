@@ -1,0 +1,22 @@
+{
+  "name": "operational-hub",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "airtable:export": "node --env-file=.env.local scripts/export-airtable.mjs",
+    "airtable:attachments": "node scripts/download-airtable-attachments.mjs",
+    "academy:catalog": "node scripts/build-academy-catalog.mjs"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "lucide-react": "latest",
+    "vite": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {}
+}
