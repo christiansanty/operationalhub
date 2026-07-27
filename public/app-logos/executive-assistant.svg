@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Executive Assistant">
+  <defs>
+    <linearGradient id="bg" x1="42" y1="28" x2="464" y2="486" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#09051f"/><stop offset="0.46" stop-color="#1e1b4b"/><stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="a-grad" x1="150" y1="95" x2="370" y2="430" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f5d0fe"/><stop offset="0.42" stop-color="#a78bfa"/><stop offset="0.72" stop-color="#67e8f9"/><stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <linearGradient id="ring" x1="92" y1="90" x2="424" y2="424" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#67e8f9"/><stop offset="0.48" stop-color="#8b5cf6"/><stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <radialGradient id="halo" cx="50%" cy="50%" r="55%">
+      <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.66"/><stop offset="0.55" stop-color="#22d3ee" stop-opacity="0.24"/><stop offset="1" stop-color="#020617" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="shine" cx="28%" cy="16%" r="60%">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.16"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="a-glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#a855f7" flood-opacity="0.9"/><feDropShadow dx="0" dy="0" stdDeviation="36" flood-color="#22d3ee" flood-opacity="0.42"/>
+    </filter>
+    <style>
+      @media (prefers-reduced-motion: no-preference) {
+        .orbit { animation: orbit-pulse 2.8s ease-in-out infinite; transform-origin: 256px 256px; }
+        .mark { animation: mark-float 4.8s ease-in-out infinite; transform-origin: 256px 270px; }
+        .dot-orbit { animation: dot-orbit 5.5s linear infinite; transform-box: view-box; transform-origin: 256px 256px; }
+        .dot { animation: dot-pulse 1.8s ease-in-out infinite; transform-origin: 388px 126px; }
+      }
+      @keyframes dot-orbit { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+      @keyframes orbit-pulse { 0%, 100% { transform: scale(1); opacity: 0.72; } 50% { transform: scale(1.035); opacity: 1; } }
+      @keyframes mark-float { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.018); } }
+      @keyframes dot-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.16); opacity: 0.78; } }
+    </style>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/><rect width="512" height="512" rx="112" fill="url(#shine)"/><circle cx="256" cy="276" r="206" fill="url(#halo)"/>
+  <g class="orbit"><circle cx="256" cy="256" r="178" fill="none" stroke="url(#ring)" stroke-width="8" stroke-opacity="0.64"/><circle cx="256" cy="256" r="207" fill="none" stroke="#67e8f9" stroke-width="3" stroke-opacity="0.28" stroke-dasharray="34 22"/><circle cx="256" cy="256" r="142" fill="none" stroke="#ffffff" stroke-width="2" stroke-opacity="0.16" stroke-dasharray="7 18"/></g>
+  <g class="mark" filter="url(#a-glow)"><text x="255" y="396" text-anchor="middle" fill="url(#a-grad)" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="410" font-weight="300">a</text></g>
+  <g class="dot-orbit"><g class="dot"><circle cx="388" cy="126" r="31" fill="#052e16" opacity="0.82"/><circle cx="388" cy="126" r="20" fill="#22c55e"/><circle cx="381" cy="118" r="6" fill="#bbf7d0"/></g></g>
+  <path d="M124 384c10-3 15-8 18-18 3 10 8 15 18 18-10 3-15 8-18 18-3-10-8-15-18-18Z" fill="#a5f3fc" opacity="0.72"/><path d="M362 390c7-2 11-6 13-13 2 7 6 11 13 13-7 2-11 6-13 13-2-7-6-11-13-13Z" fill="#ddd6fe" opacity="0.74"/>
+</svg>

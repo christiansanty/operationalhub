@@ -7,3 +7,6 @@ dist/
 .env.*
 !.env.example
 private/
+server/data/
+output/
+tmp/

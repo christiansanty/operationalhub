@@ -1,0 +1,15 @@
+import React from 'react';
+import { AlertTriangle, Camera, CheckCircle2, ClipboardSignature, HeartPulse, Ruler, ShieldCheck } from 'lucide-react';
+import './medical-assistant-allergy-scope.css';
+
+export default function MedicalAssistantAllergyScope({protocol,lang}){
+  if(!protocol)return null;
+  const isEn=lang==='en';
+  return <section className="ma-allergy-scope">
+    <header><HeartPulse size={25}/><div><span>{isEn?'SPECIALIZED MEDICAL ASSISTANT SCOPE':'SCOPE ESPECIALIZADO DEL MEDICAL ASSISTANT'}</span><h3>{protocol.title[lang]}</h3><p>{protocol.summary[lang]}</p></div></header>
+    <div className="allergy-learning-pillars"><article><ClipboardSignature size={21}/><strong>{isEn?'Forms and consent':'Formularios y consentimiento'}</strong><p>{isEn?'Verify the provider order, screening, current consent and the exact approved form before starting.':'Verificar orden del proveedor, screening, consentimiento vigente y formulario aprobado exacto antes de comenzar.'}</p></article><article><Ruler size={21}/><strong>{isEn?'Objective documentation':'Documentación objetiva'}</strong><p>{isEn?'The MA maps, measures and records objective findings; the provider observes and interprets the result.':'El MA mapea, mide y registra hallazgos objetivos; el proveedor observa e interpreta el resultado.'}</p></article><article><Camera size={21}/><strong>{isEn?'Controlled photographs':'Fotografías controladas'}</strong><p>{isEn?'Capture and store only the required authorized images in the approved clinical record.':'Capturar y guardar solamente imágenes requeridas y autorizadas en el expediente clínico aprobado.'}</p></article></div>
+    <div className="allergy-workflow-list">{protocol.workflow.map((item,index)=><article key={item.title.en}><i>{String(index+1).padStart(2,'0')}</i><div><strong>{item.title[lang]}</strong><p>{item.detail[lang]}</p></div></article>)}</div>
+    <div className="allergy-safety-documentation"><section><header><AlertTriangle size={20}/><h4>{isEn?'Reaction and safety escalation':'Reacción y escalamiento de seguridad'}</h4></header>{protocol.safety.map(item=><article key={item.level.en}><strong>{item.level[lang]}</strong><p>{item.action[lang]}</p></article>)}</section><section><header><ClipboardSignature size={20}/><h4>{isEn?'Documentation checklist':'Checklist de documentación'}</h4></header>{protocol.documentation.map(group=><article key={group.label.en}><strong>{group.label[lang]}</strong><ul>{group.items[lang].map(item=><li key={item}><CheckCircle2 size={14}/>{item}</li>)}</ul></article>)}</section></div>
+    <footer><ShieldCheck size={20}/><p><strong>{isEn?'Non-negotiable boundary':'Límite no negociable'}</strong>{isEn?'The Medical Assistant completes the authorized procedure and documentation. Only the provider interprets the test, determines candidacy, diagnoses, prescribes or changes treatment.':'El Medical Assistant completa el procedimiento autorizado y la documentación. Solamente el proveedor interpreta la prueba, determina candidatura, diagnostica, prescribe o cambia tratamiento.'}</p></footer>
+  </section>;
+}

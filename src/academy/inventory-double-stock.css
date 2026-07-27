@@ -1,0 +1,135 @@
+.double-stock-policy {
+  margin: 18px 20px 0;
+  padding: 19px;
+  border: 1px solid #91c9bf;
+  border-radius: 15px;
+  background: linear-gradient(135deg, #eaf8f4, #f8fcfb);
+}
+
+.double-stock-policy > header {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.double-stock-policy > header svg {
+  flex: none;
+  color: #176c64;
+}
+
+.double-stock-policy > header span {
+  color: #1d756d;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.double-stock-policy h4 {
+  margin: 4px 0 0;
+  color: #174744;
+  font-size: 19px;
+}
+
+.double-stock-policy > p {
+  margin: 12px 0;
+  color: #3f6260;
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.double-stock-policy > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.double-stock-policy > div span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  color: #4e6866;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.double-stock-policy > div span.trigger {
+  background: #fff0cc;
+  color: #7b5410;
+}
+
+.double-stock-policy i {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  height: 24px;
+  border-radius: 8px;
+  background: #dff2ed;
+  color: #176c64;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inventory-control-rules {
+  margin: 12px 20px 0;
+  padding: 16px;
+  border: 1px solid #d8e4e2;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.inventory-control-rules > strong {
+  color: #244d4a;
+  font-size: 15px;
+}
+
+.inventory-control-rules ul {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin: 11px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inventory-control-rules li {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  color: #576f6d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.inventory-control-rules li svg {
+  flex: none;
+  color: #288177;
+}
+
+.reserve-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 9px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #edf8f5;
+  color: #25665f;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.reserve-trigger.required {
+  background: #fff0ce;
+  color: #82570d;
+}
+
+@media (max-width: 650px) {
+  .double-stock-policy > div,
+  .inventory-control-rules ul {
+    grid-template-columns: 1fr;
+  }
+}

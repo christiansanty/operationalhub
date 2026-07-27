@@ -1,0 +1,355 @@
+.academy-welcome-video {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(350px, .8fr);
+  min-height: 470px;
+  margin: 6px 0 26px;
+  overflow: hidden;
+  border: 1px solid #d9e0ea;
+  border-radius: 24px;
+  background: #fff;
+  box-shadow: 0 18px 50px rgba(17, 24, 39, .08);
+}
+
+.academy-welcome-stage {
+  position: relative;
+  min-height: 470px;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% 18%, rgba(59, 130, 246, .3), transparent 33%),
+    radial-gradient(circle at 82% 78%, rgba(45, 212, 191, .18), transparent 31%),
+    linear-gradient(135deg, #0c1628, #142b4b 58%, #194b65);
+}
+
+.academy-welcome-stage video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 470px;
+  object-fit: cover;
+  background: #07111f;
+}
+
+.academy-video-placeholder {
+  display: grid;
+  height: 100%;
+  min-height: 470px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: 35px;
+  color: #dbeafe;
+  text-align: center;
+}
+
+.academy-video-placeholder > span {
+  display: grid;
+  width: 82px;
+  height: 82px;
+  margin-bottom: 5px;
+  place-items: center;
+  border: 1px solid rgba(255,255,255,.35);
+  border-radius: 50%;
+  background: rgba(255,255,255,.14);
+  color: #fff;
+  box-shadow: 0 18px 50px rgba(0,0,0,.26);
+  backdrop-filter: blur(10px);
+}
+
+.academy-video-placeholder > span svg {
+  width: 31px;
+  height: 31px;
+  margin-left: 4px;
+}
+
+.academy-video-placeholder > svg {
+  width: 29px;
+  animation: academy-video-spin 1s linear infinite;
+}
+
+.academy-video-placeholder strong {
+  color: #fff;
+  font: 800 25px Manrope, sans-serif;
+}
+
+.academy-video-placeholder p {
+  max-width: 470px;
+  margin: 0;
+  color: #bed2e7;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.academy-video-stage-label {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 20px;
+  background: rgba(7, 17, 31, .6);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: .12em;
+  backdrop-filter: blur(10px);
+}
+
+.academy-video-stage-label svg {
+  width: 15px;
+}
+
+.academy-welcome-copy {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 36px 34px;
+}
+
+.academy-welcome-kicker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2563eb;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: .1em;
+}
+
+.academy-welcome-kicker svg {
+  width: 17px;
+}
+
+.academy-welcome-copy h2 {
+  margin: 13px 0 13px;
+  color: #111827;
+  font: 800 clamp(29px, 2.6vw, 42px)/1.08 Manrope, sans-serif;
+  letter-spacing: -.045em;
+}
+
+.academy-welcome-copy > p {
+  margin: 0;
+  color: #64748b;
+  font-size: 16px;
+  line-height: 1.68;
+}
+
+.academy-welcome-pillars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 20px;
+}
+
+.academy-welcome-pillars span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 9px;
+  border-radius: 20px;
+  background: #f0f5ff;
+  color: #315b98;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.academy-welcome-pillars svg {
+  width: 14px;
+}
+
+.academy-video-metadata {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 18px;
+  padding: 11px 12px;
+  border: 1px solid #bfe2cf;
+  border-radius: 11px;
+  background: #f0fbf5;
+}
+
+.academy-video-metadata > svg {
+  flex: 0 0 auto;
+  width: 19px;
+  color: #168052;
+}
+
+.academy-video-metadata > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.academy-video-metadata strong {
+  color: #18593d;
+  font-size: 12px;
+}
+
+.academy-video-metadata small {
+  overflow: hidden;
+  color: #5e7568;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.academy-video-manager {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 17px;
+  border-top: 1px solid #e6eaf0;
+}
+
+.academy-video-manager > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.academy-video-manager > div:first-child strong {
+  color: #1f2937;
+  font-size: 13px;
+}
+
+.academy-video-manager > div:first-child span {
+  color: #7b8797;
+  font-size: 11px;
+}
+
+.academy-video-upload-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.academy-video-upload-actions label,
+.academy-video-upload-actions button {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 1px solid #cfd8e5;
+  border-radius: 10px;
+  background: #fff;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.academy-video-upload-actions label input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.academy-video-upload-actions button {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+
+.academy-video-upload-actions button:disabled {
+  cursor: wait;
+  opacity: .72;
+}
+
+.academy-video-upload-actions svg,
+.academy-selected-video svg,
+.academy-video-success svg,
+.academy-video-error svg {
+  flex: 0 0 auto;
+  width: 16px;
+}
+
+.academy-video-upload-actions button:disabled svg {
+  animation: academy-video-spin 1s linear infinite;
+}
+
+.academy-selected-video,
+.academy-video-success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #64748b;
+  font-size: 11px;
+}
+
+.academy-video-success {
+  color: #13764a;
+  font-weight: 700;
+}
+
+.academy-video-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin: 12px 0 0;
+  color: #b42318;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+@keyframes academy-video-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 1150px) {
+  .academy-welcome-video {
+    grid-template-columns: 1.2fr .8fr;
+  }
+
+  .academy-welcome-copy {
+    padding: 29px 26px;
+  }
+}
+
+@media (max-width: 900px) {
+  .academy-welcome-video {
+    grid-template-columns: 1fr;
+  }
+
+  .academy-welcome-stage,
+  .academy-welcome-stage video,
+  .academy-video-placeholder {
+    min-height: 390px;
+  }
+}
+
+@media (max-width: 620px) {
+  .academy-welcome-video {
+    min-height: 0;
+    border-radius: 18px;
+  }
+
+  .academy-welcome-stage,
+  .academy-welcome-stage video,
+  .academy-video-placeholder {
+    min-height: 250px;
+  }
+
+  .academy-welcome-copy {
+    padding: 25px 20px;
+  }
+
+  .academy-welcome-copy h2 {
+    font-size: 29px;
+  }
+
+  .academy-video-placeholder {
+    padding: 25px 18px;
+  }
+
+  .academy-video-placeholder > span {
+    width: 66px;
+    height: 66px;
+  }
+}

@@ -3,8 +3,8 @@
 export const airtableSync = {
   "baseId": "appaudJsTWWbjwNzd",
   "baseName": "TRAININGS - Learning Center",
-  "exportedAt": "2026-07-17T18:17:57.249Z",
-  "generatedAt": "2026-07-17T19:04:50.246Z",
+  "exportedAt": "2026-07-17T20:12:42.288Z",
+  "generatedAt": "2026-07-17T20:12:53.655Z",
   "tableCount": 29,
   "recordCount": 93,
   "attachmentCount": 42,
@@ -20,8 +20,8 @@ export const airtableCourses = [
     "tone": "blue",
     "specialMode": null,
     "progress": 0,
-    "duration": "5h",
-    "modules": 14,
+    "duration": "7h",
+    "modules": 18,
     "due": {
       "en": "Assigned",
       "es": "Asignado"
@@ -52,6 +52,7 @@ export const airtableCourses = [
         "description": "Learn how to manage your practice schedule, book appointments, and manage appointment requests.",
         "externalUrl": "https://fast.wistia.net/embed/iframe/h4erkoa9vt",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -61,6 +62,7 @@ export const airtableCourses = [
         "description": "Learn how to use Practice Fusion's messaging feature, which allows you to communicate with your patients, practice staff, and provider network in one unified inbox.",
         "externalUrl": "https://fast.wistia.net/embed/iframe/6lcv80d02v",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-27T15:22:55.000Z"
       },
       {
@@ -70,6 +72,7 @@ export const airtableCourses = [
         "description": "Es importante destacar que esta configuración debe realizarla cada usuario desde su propio perfil, ya que no se trata de una configuración general del sistema. Cada profesional puede personalizar los tipos de encounter según sus necesidades clínicas y flujos de trabajo, permitiendo así una mayor flexibilidad al momento de generar citas y registrar consultas.",
         "externalUrl": "https://drive.google.com/file/d/1Fy6Pft18qYT75sBExLp3IFucowdZDwt6/view?usp=sharing",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-07-24T15:39:38.000Z"
       },
       {
@@ -79,6 +82,7 @@ export const airtableCourses = [
         "description": "Welcome to Practice Fusion! This quick start guide will introduce you to the basics of our EHR so that your entire practice can get up and running with Practice Fusion today.",
         "externalUrl": "https://fast.wistia.net/embed/iframe/eqae3vqjh7",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -88,6 +92,7 @@ export const airtableCourses = [
         "description": "Lo que debes hacer:\nPedir al administrador de tu cuenta de Practice Fusion que:\n\nTe asigne el rol de Provider (o Signing user).\n\nConfigure tu perfil de proveedor con tu NPI.\n\nActive tu permiso para firmar encounters.\n\nUna vez que tengas el rol, deberás crear tu PIN de firma electrónica, que es lo que te permitirá firmar las notas médicas.\n\n📚 Documentación oficial que necesitas:\nhttps://help.practicefusion.com/s/article/How-do-I-add-my-NPI-and-DEA-numbers-to-my-account\n\nhttps://help.practicefusion.com/s/article/what-is-a-national-provider-identifier-npi\n\nhttps://help.practicefusion.com/s/article/Setting-up-EPCS-e-signing-permissions-Step-2-of-2?\n\nhttps://help.practicefusion.com/s/article/Activating-e-prescribing-of-controlled-substances-EPCS-Step-1-of-2",
         "externalUrl": null,
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-09-04T17:05:00.000Z"
       },
       {
@@ -97,6 +102,7 @@ export const airtableCourses = [
         "description": "Find where to locate the Practice Access Code and send verification emails to your new users.",
         "externalUrl": "https://fast.wistia.net/embed/iframe/whra1xfqln?wtime=1m9s",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -106,6 +112,7 @@ export const airtableCourses = [
         "description": "This two-step process enables providers to prescribe controlled substances electronically in Practice Fusion. Doctors must log in to their account and complete both steps: activating EPCS and setting up electronic signing permissions.\n\nLinks:\nStep 1: Activating EPCS: https://help.practicefusion.com/s/article/Activating-e-prescribing-of-controlled-substances-EPCS-Step-1-of-2\nStep 2: Setting Up EPCS Signing Permissions: https://help.practicefusion.com/s/article/Setting-up-EPCS-e-signing-permissions-Step-2-of-2",
         "externalUrl": null,
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-30T16:32:44.000Z"
       },
       {
@@ -115,6 +122,7 @@ export const airtableCourses = [
         "description": "In this video, I walk you through the customizable settings of our calendar system, covering key features such as location providers, office timings, appointment sources, and appointment statuses. I explain how to assign providers to specific locations, adjust office hours for different providers, and manage appointment types and reasons. Additionally, I demonstrate how to add new appointment statuses and slots for providers at various locations. Please take a moment to review these settings and make any necessary adjustments to ensure everything is up to date. Your attention to these details will help streamline our scheduling process.",
         "externalUrl": "https://www.loom.com/share/e963503ce6d846bbb1db7aaa0c29d7bf?sid=d3d3c70b-4a57-4333-81d1-feb99756d56d",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-10-16T15:52:55.000Z"
       },
       {
@@ -124,6 +132,7 @@ export const airtableCourses = [
         "description": "",
         "externalUrl": "https://www.loom.com/share/0f3786cfe49448da82ab34625f976255?sid=d1749987-4fd1-459c-9029-abb92c9b6cb1",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-10-16T15:54:13.000Z"
       },
       {
@@ -133,6 +142,7 @@ export const airtableCourses = [
         "description": "",
         "externalUrl": "https://www.loom.com/share/80916fb78e9640fc9c50e40b5bc9db7c?sid=f9da8774-10d2-41c9-aa8d-bb4746fd4999",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-10-16T15:54:00.000Z"
       },
       {
@@ -142,6 +152,7 @@ export const airtableCourses = [
         "description": "",
         "externalUrl": "https://www.loom.com/share/59dabaadebcc44e4b324a0695888cb2a?sid=5fce1e08-e7ee-46f1-b71d-0a0cd554035d",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-10-16T15:53:27.000Z"
       },
       {
@@ -151,7 +162,24 @@ export const airtableCourses = [
         "description": "In this video, I walk you through the key features of our HMS software, starting from the login process to the scheduler view. You'll see how to create new appointments for patients, including selecting locations, providers, and visit reasons. I also cover options for modifying or deleting appointments, checking patient eligibility, and customizing appointment reports. Please pay attention to the different calendar views available, as they can help you manage appointments more effectively. Let me know if you have any questions or need further clarification on any of the features discussed!",
         "externalUrl": "https://www.loom.com/share/4f8e80b875a7433e9c05ea4685f354e3",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-10-16T15:52:26.000Z"
+      },
+      {
+        "id": "tblxneFUD8oUCn1dn-content-pending",
+        "table": "Availity",
+        "title": "Availity · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
       },
       {
         "id": "reclM9yC6SUFsQ1yb",
@@ -168,6 +196,7 @@ export const airtableCourses = [
             "size": 70690297
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -177,7 +206,56 @@ export const airtableCourses = [
         "description": "En el siguiente enlace encontrarán toda la documentación disponible sobre la plataforma Nabla.",
         "externalUrl": "https://help.nabla.com/en/categories/138690-getting-started-with-nabla",
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
+      },
+      {
+        "id": "tbldsz7psVimH2Nw7-content-pending",
+        "table": "Expressradiology",
+        "title": "Expressradiology · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblvyEW6CRKGXoRkr-content-pending",
+        "table": "Tebra or Kareo",
+        "title": "Tebra or Kareo · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblm2ebRyf81H7ufh-content-pending",
+        "table": "Updox",
+        "title": "Updox · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
       }
     ],
     "lessons": [
@@ -230,12 +308,28 @@ export const airtableCourses = [
         "Part 1 : Appointment Creation and Calendar View"
       ],
       [
+        "Availity · Content pending",
+        "Availity · Content pending"
+      ],
+      [
         "Inicia sesión en la plataforma Nabla y activa el micrófono y altavoces para asegurar una correcta comunicación.",
         "Inicia sesión en la plataforma Nabla y activa el micrófono y altavoces para asegurar una correcta comunicación."
       ],
       [
         "Enlaces a tutoriales y recursos adicionales",
         "Enlaces a tutoriales y recursos adicionales"
+      ],
+      [
+        "Expressradiology · Content pending",
+        "Expressradiology · Content pending"
+      ],
+      [
+        "Tebra or Kareo · Content pending",
+        "Tebra or Kareo · Content pending"
+      ],
+      [
+        "Updox · Content pending",
+        "Updox · Content pending"
       ]
     ]
   },
@@ -247,8 +341,8 @@ export const airtableCourses = [
     "tone": "cyan",
     "specialMode": null,
     "progress": 0,
-    "duration": "1h",
-    "modules": 2,
+    "duration": "3h",
+    "modules": 6,
     "due": {
       "en": "Assigned",
       "es": "Asignado"
@@ -271,6 +365,70 @@ export const airtableCourses = [
     "assetCount": 2,
     "content": [
       {
+        "id": "tblO5di5VP8cM4ptZ-content-pending",
+        "table": "APP Call center",
+        "title": "APP Call center · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblmTRCHQVljfbuze-content-pending",
+        "table": "Ringotel",
+        "title": "Ringotel · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblusEyNi53dDUZYw-content-pending",
+        "table": "Flash Operator Panel 2",
+        "title": "Flash Operator Panel 2 · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblYi9Gw9BgAzbwxc-content-pending",
+        "table": "Asternic CDR Reports",
+        "title": "Asternic CDR Reports · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
         "id": "recQtynl6HIyDfR9k",
         "table": "FreshWork CRM",
         "title": "Instalación, configuración y uso de APP Freshchat",
@@ -285,6 +443,7 @@ export const airtableCourses = [
             "size": 13867832
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -302,10 +461,27 @@ export const airtableCourses = [
             "size": 237525014
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       }
     ],
     "lessons": [
+      [
+        "APP Call center · Content pending",
+        "APP Call center · Content pending"
+      ],
+      [
+        "Ringotel · Content pending",
+        "Ringotel · Content pending"
+      ],
+      [
+        "Flash Operator Panel 2 · Content pending",
+        "Flash Operator Panel 2 · Content pending"
+      ],
+      [
+        "Asternic CDR Reports · Content pending",
+        "Asternic CDR Reports · Content pending"
+      ],
       [
         "Instalación, configuración y uso de APP Freshchat",
         "Instalación, configuración y uso de APP Freshchat"
@@ -324,8 +500,8 @@ export const airtableCourses = [
     "tone": "violet",
     "specialMode": null,
     "progress": 0,
-    "duration": "1h",
-    "modules": 1,
+    "duration": "3h",
+    "modules": 8,
     "due": {
       "en": "Assigned",
       "es": "Asignado"
@@ -351,19 +527,160 @@ export const airtableCourses = [
     "assetCount": 0,
     "content": [
       {
+        "id": "tblhGezoWznMZafYy-content-pending",
+        "table": "Windows",
+        "title": "Windows · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblyfOWr3GnNHv4O9-content-pending",
+        "table": "Cisco AnyConnect Secure",
+        "title": "Cisco AnyConnect Secure · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblPQaSFIp8XBjJB3-content-pending",
+        "table": "Gmail WS",
+        "title": "Gmail WS · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblDEGrs4ord1l2UC-content-pending",
+        "table": "IPAGE Mail",
+        "title": "IPAGE Mail · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblAQU6Eg6p2OpwME-content-pending",
+        "table": "Adobe Acrobat",
+        "title": "Adobe Acrobat · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
+        "id": "tblAkyQbAvr3Z2nVw-content-pending",
+        "table": "Microsoft Office",
+        "title": "Microsoft Office · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
+      },
+      {
         "id": "rec6zwIE11MMO14Vt",
         "table": "Airtable",
         "title": "Importar datos de Google Sheet a Airtable",
         "description": "https://www.youtube.com/watch?v=vzaFsZOAFrg",
         "externalUrl": null,
         "attachments": [],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
+      },
+      {
+        "id": "tblIJoJTzP5TOxxi5-content-pending",
+        "table": "NVRs MontavueGo",
+        "title": "NVRs MontavueGo · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        "externalUrl": null,
+        "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
+        "status": "pending"
       }
     ],
     "lessons": [
       [
+        "Windows · Content pending",
+        "Windows · Content pending"
+      ],
+      [
+        "Cisco AnyConnect Secure · Content pending",
+        "Cisco AnyConnect Secure · Content pending"
+      ],
+      [
+        "Gmail WS · Content pending",
+        "Gmail WS · Content pending"
+      ],
+      [
+        "IPAGE Mail · Content pending",
+        "IPAGE Mail · Content pending"
+      ],
+      [
+        "Adobe Acrobat · Content pending",
+        "Adobe Acrobat · Content pending"
+      ],
+      [
+        "Microsoft Office · Content pending",
+        "Microsoft Office · Content pending"
+      ],
+      [
         "Importar datos de Google Sheet a Airtable",
         "Importar datos de Google Sheet a Airtable"
+      ],
+      [
+        "NVRs MontavueGo · Content pending",
+        "NVRs MontavueGo · Content pending"
       ]
     ]
   },
@@ -396,12 +713,19 @@ export const airtableCourses = [
     "assetCount": 3,
     "content": [
       {
-        "id": "qhslab-content-pending",
+        "id": "tblhGfYtqAx72JCtz-content-pending",
         "table": "QHSLAB",
-        "title": "QHS Labs · Content pending",
-        "description": "The Learning Center table exists, but its three records do not yet contain publishable training content.",
+        "title": "QHSLAB · Content pending",
+        "description": "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
         "externalUrl": null,
         "attachments": [],
+        "details": [
+          {
+            "label": "Airtable rows",
+            "value": "3"
+          }
+        ],
+        "sourceUpdated": null,
         "status": "pending"
       },
       {
@@ -417,6 +741,12 @@ export const airtableCourses = [
             "filename": "BP_ BS LOG.pdf",
             "type": "application/pdf",
             "size": 200789
+          }
+        ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "APRN DOCTOR"
           }
         ],
         "sourceUpdated": "2025-11-04T16:12:05.000Z"
@@ -443,13 +773,14 @@ export const airtableCourses = [
             "size": 167163
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-08-20T05:39:43.000Z"
       }
     ],
     "lessons": [
       [
-        "QHS Labs · Content pending",
-        "QHS Labs · Content pending"
+        "QHSLAB · Content pending",
+        "QHSLAB · Content pending"
       ],
       [
         "BS/ BP Log",
@@ -511,6 +842,12 @@ export const airtableCourses = [
             "size": 8094374
           }
         ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "MEDICAL DIRECTOR"
+          }
+        ],
         "sourceUpdated": "2025-06-15T18:37:28.000Z"
       },
       {
@@ -526,6 +863,12 @@ export const airtableCourses = [
             "filename": "form breast ultrasaund (1).jpg",
             "type": "image/jpeg",
             "size": 536114
+          }
+        ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "TECHNICAL"
           }
         ],
         "sourceUpdated": "2025-08-20T04:51:52.000Z"
@@ -559,6 +902,12 @@ export const airtableCourses = [
             "size": 128629
           }
         ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "APRN DOCTOR"
+          }
+        ],
         "sourceUpdated": "2025-07-15T15:31:17.000Z"
       },
       {
@@ -574,6 +923,12 @@ export const airtableCourses = [
             "filename": "Estetica Med History[1].pdf",
             "type": "application/pdf",
             "size": 3926673
+          }
+        ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "FRONT DESK"
           }
         ],
         "sourceUpdated": "2025-08-11T20:28:35.000Z"
@@ -607,6 +962,12 @@ export const airtableCourses = [
             "size": 148048
           }
         ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "APRN DOCTOR"
+          }
+        ],
         "sourceUpdated": "2025-07-15T15:03:08.000Z"
       },
       {
@@ -629,6 +990,12 @@ export const airtableCourses = [
             "filename": "Consent_Form_Sculptra_305_Medical_Care_Autorizacion_Actualizada_Masajes_Extra_Dias.docx",
             "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             "size": 38972
+          }
+        ],
+        "details": [
+          {
+            "label": "RESPONSABLE",
+            "value": "APRN DOCTOR"
           }
         ],
         "sourceUpdated": "2025-07-16T16:58:48.000Z"
@@ -706,6 +1073,7 @@ export const airtableCourses = [
             "size": 209334778
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -723,6 +1091,7 @@ export const airtableCourses = [
             "size": 55260302
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-05-27T14:42:50.000Z"
       },
       {
@@ -740,6 +1109,7 @@ export const airtableCourses = [
             "size": 9316507
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-07-08T15:28:25.000Z"
       },
       {
@@ -764,6 +1134,7 @@ export const airtableCourses = [
             "size": 156009
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-06-15T18:37:28.000Z"
       },
       {
@@ -809,6 +1180,7 @@ export const airtableCourses = [
             "size": 121831
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-06-15T18:37:28.000Z"
       },
       {
@@ -833,6 +1205,7 @@ export const airtableCourses = [
             "size": 69356
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-08-20T04:51:17.000Z"
       }
     ],
@@ -896,7 +1269,7 @@ export const airtableCourses = [
         "table": "LICENSES",
         "title": "CLIA WAIVER - LABORATORIES",
         "description": "- Clia Waiver Expired every two years and renovation it must be completed 3 months previous to due date shown on certificate",
-        "externalUrl": null,
+        "externalUrl": "https://qcor.cms.gov/main.jsp",
         "attachments": [
           {
             "id": "att0fgSkn0ARgcfbz",
@@ -934,6 +1307,7 @@ export const airtableCourses = [
             "size": 5139632
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-07-05T23:34:36.000Z"
       },
       {
@@ -941,7 +1315,7 @@ export const airtableCourses = [
         "table": "PRIOR AUTHORIZATIONS",
         "title": "NEW CENTURY HEALTH PRIOR AUTHORIZATIONS",
         "description": "- New Century Health process prior authorization for cardiology ( dopplers and echocardiogram in EMC) for most the insurances\n- EMC used for Molina Healthcare and Ambetter",
-        "externalUrl": null,
+        "externalUrl": "https://my.newcenturyhealth.com/",
         "attachments": [
           {
             "id": "atthJ7ZJ4ga4RkZnt",
@@ -979,6 +1353,7 @@ export const airtableCourses = [
             "size": 127294
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-07-06T20:27:25.000Z"
       },
       {
@@ -986,7 +1361,7 @@ export const airtableCourses = [
         "table": "PRIOR AUTHORIZATIONS",
         "title": "AMBETTER PRIOR AUTHORIZATION OUTPATIENTS",
         "description": "- PA Outpatient Form PDF",
-        "externalUrl": null,
+        "externalUrl": "https://www.ambetterhealth.com/en/fl/provider-resources/manuals-and-forms/",
         "attachments": [
           {
             "id": "attVqoJ83JJQz3dtz",
@@ -1003,6 +1378,7 @@ export const airtableCourses = [
             "size": 1114557
           }
         ],
+        "details": [],
         "sourceUpdated": "2025-07-21T05:55:47.000Z"
       }
     ],

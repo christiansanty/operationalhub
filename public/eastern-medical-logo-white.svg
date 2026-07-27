@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 142" role="img" aria-labelledby="title">
+  <title id="title">Eastern Medical</title>
+  <g fill="#7FD858">
+    <path d="M91.596 136.861H61.664l29.932-24.353v24.353ZM3.992 136.861V92.403l24.529-23.221v67.68H3.992Zm88.021-27.601-33.926 27.602H30.779V67.688h61.946V65.43H29.65l-.776.309L2.087 91.097l-.353.82v46.074l1.129 1.129H92.725l1.128-1.129v-27.855l-1.84-.876Z"/>
+    <path d="M3.992 4.124h82.806c-17.362 14.6-71.951 63.409-82.806 73.124V4.124ZM90.639 3.87l-.714-2.003H2.864L1.735 2.995v76.778l1.882.841C4.333 79.973 75.337 16.366 90.639 3.87Z"/>
+  </g>
+  <g fill="#FFFFFF" font-family="Arial, Helvetica, sans-serif">
+    <text x="128" y="77" font-size="54" font-weight="300" letter-spacing="8">EASTERN</text>
+    <text x="153" y="125" font-size="29" font-weight="300" letter-spacing="12">MEDICAL</text>
+  </g>
+</svg>

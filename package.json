@@ -5,11 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "dev:full": "node --env-file-if-exists=.env.local scripts/dev-stack.mjs",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1",
+    "backend": "node --env-file-if-exists=.env.local server/index.mjs",
+    "start": "node --env-file-if-exists=.env.local server/index.mjs",
     "airtable:export": "node --env-file=.env.local scripts/export-airtable.mjs",
     "airtable:attachments": "node scripts/download-airtable-attachments.mjs",
-    "academy:catalog": "node scripts/build-academy-catalog.mjs"
+    "academy:catalog": "node scripts/build-academy-catalog.mjs",
+    "academy:sync": "node --env-file=.env.local scripts/sync-academy-backend.mjs",
+    "airtable:operational:sync": "node --env-file=.env.local scripts/sync-operational-airtable.mjs"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",

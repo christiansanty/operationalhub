@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ScribeX Health">
+  <rect width="64" height="64" rx="12" fill="#0b93bd"/>
+  <g transform="translate(8 8) scale(2)" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m16 13 5.223 3.482A.5.5 0 0 0 22 16.066V7.87a.5.5 0 0 0-.752-.432L16 10.5"/>
+    <rect x="2" y="6" width="14" height="12" rx="2"/>
+  </g>
+</svg>

@@ -3,6 +3,7 @@ import path from "node:path";
 
 const exportFile = path.resolve("private/airtable-export.json");
 const outputFile = path.resolve("src/data/airtableTraining.js");
+const backendCatalogFile = path.resolve("private/academy-catalog.json");
 const payload = JSON.parse(await readFile(exportFile, "utf8"));
 
 const groups = [
@@ -92,17 +93,37 @@ function isAttachmentList(value) {
   return Array.isArray(value) && value.some((item) => item?.filename && item?.url);
 }
 
+function fieldText(value) {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value && typeof value === "object" && typeof value.value === "string") return value.value.trim();
+  return "";
+}
+
+function firstWebUrl(...values) {
+  for (const value of values) {
+    const text = fieldText(value);
+    const match = text.match(/https?:\/\/[^\s]+/i);
+    if (match) return match[0];
+  }
+  return null;
+}
+
 function cleanRecord(table, record, index) {
   const fields = record.fields || {};
   const attachments = Object.entries(fields)
     .filter(([, value]) => isAttachmentList(value))
     .flatMap(([field, value]) => value.map(({ id, filename, type, size }) => ({ id, field, filename, type, size: size || null })));
-  const externalUrl = [fields.URL, typeof fields.Videos === "string" ? fields.Videos : null]
-    .find((value) => typeof value === "string" && /^https?:\/\//.test(value)) || null;
+  const externalUrl = firstWebUrl(fields.URL, fields.Videos, fields.Website);
   const name = String(fields.Name || "").trim();
-  const description = String(fields.Description || fields.Notes || "").trim();
+  const description = String(fields.Description || fields.Notes || fields.Notas || "").trim();
+  const reserved = new Set(["Name", "Description", "Notes", "Notas", "URL", "Videos", "Website", "Users", "Assignee", "Attachment Summary"]);
+  const details = Object.entries(fields)
+    .filter(([field, value]) => !reserved.has(field) && !isAttachmentList(value))
+    .map(([label, value]) => ({ label, value: fieldText(value) }))
+    .filter((detail) => detail.value);
 
-  if (!name && !description && !externalUrl && attachments.length === 0) return null;
+  if (!name && !description && !externalUrl && attachments.length === 0 && details.length === 0) return null;
 
   return {
     id: record.id,
@@ -111,6 +132,7 @@ function cleanRecord(table, record, index) {
     description,
     externalUrl,
     attachments,
+    details,
     sourceUpdated: record.createdTime || null,
   };
 }
@@ -123,6 +145,7 @@ const courses = groups.map((group) => {
   for (const tableName of group.tables) {
     const table = tableMap.get(tableName);
     if (!table) continue;
+    const beforeTable = content.length;
     table.records.forEach((record, index) => {
       const lesson = cleanRecord(table, record, index);
       if (!lesson) return;
@@ -130,18 +153,19 @@ const courses = groups.map((group) => {
       if (group.exclude && group.exclude(lesson.title)) return;
       content.push(lesson);
     });
-  }
-
-  if (group.id === "airtable-chronic-labs" && !content.some((item) => item.table === "QHSLAB")) {
-    content.unshift({
-      id: "qhslab-content-pending",
-      table: "QHSLAB",
-      title: "QHS Labs · Content pending",
-      description: "The Learning Center table exists, but its three records do not yet contain publishable training content.",
-      externalUrl: null,
-      attachments: [],
-      status: "pending",
-    });
+    if (content.length === beforeTable) {
+      content.push({
+        id: `${table.id}-content-pending`,
+        table: table.name,
+        title: `${table.name} · Content pending`,
+        description: "This Airtable table is connected, but its current rows do not contain publishable training content yet.",
+        externalUrl: null,
+        attachments: [],
+        details: [{ label: "Airtable rows", value: String(table.records.length) }],
+        sourceUpdated: null,
+        status: "pending",
+      });
+    }
   }
 
   const assetCount = content.reduce((total, item) => total + item.attachments.length, 0);
@@ -187,5 +211,6 @@ await writeFile(
     `export const airtableSync = ${JSON.stringify(sync, null, 2)};\n\n` +
     `export const airtableCourses = ${JSON.stringify(courses, null, 2)};\n`,
 );
+await writeFile(backendCatalogFile, `${JSON.stringify({ sync, courses }, null, 2)}\n`, { mode: 0o600 });
 
 console.log(`Generated ${courses.length} courses from ${sync.recordCount} records (${sync.attachmentCount} referenced attachments).`);
