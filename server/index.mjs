@@ -48,9 +48,21 @@ function sessionCookie(request, token, maxAge = 7 * 24 * 60 * 60) {
 
 function requestBaseUrl(request) {
   if (process.env.APP_PUBLIC_URL) return process.env.APP_PUBLIC_URL;
-  const host = /^[a-z0-9.:[\]-]+$/i.test(String(request.headers.host || '')) ? request.headers.host : `127.0.0.1:${port === 4176 ? 4173 : port}`;
+  const forwardedHost = String(request.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const requestedHost = forwardedHost || String(request.headers.host || '');
+  let host = /^[a-z0-9.:[\]-]+$/i.test(requestedHost) ? requestedHost : `127.0.0.1:${port}`;
   const forwarded = String(request.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  return `${forwarded || 'http'}://${host}`;
+  const protocol = forwarded || 'http';
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      const localUrl = new URL(`${protocol}://${host}`);
+      if (['127.0.0.1', 'localhost', '[::1]'].includes(localUrl.hostname) && Number(localUrl.port || port) === port) {
+        localUrl.port = String(process.env.FRONTEND_PORT || 4173);
+        return localUrl.origin;
+      }
+    } catch {}
+  }
+  return `${protocol}://${host}`;
 }
 
 function adminActor(request, requireManage = true) {
