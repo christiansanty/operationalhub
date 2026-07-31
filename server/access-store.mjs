@@ -203,7 +203,7 @@ export function getAccessSystemStatus() {
   const email = getAccessEmailStatus();
   return {
     email,
-    demoAdministratorEnabled: process.env.NODE_ENV !== 'production' && process.env.OPERATIONAL_HUB_DEMO_ADMIN !== 'false',
+    demoAdministratorEnabled: false,
     invitationLifetimeHours: invitationLifetimeMs / 3600000,
     sessionLifetimeDays: sessionLifetimeMs / 86400000,
   };

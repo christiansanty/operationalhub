@@ -9,7 +9,7 @@ const databasePath=process.env.OPERATIONAL_HUB_DATABASE_PATH
   : path.resolve('private','operational-hub.sqlite');
 const privateRoot=path.dirname(databasePath);
 const documentRoot=path.join(privateRoot,'hr-records','documents');
-const categories=new Set(['certification','background-screening','aca-roster','e-verify','course','medical-exam','signed-document','credential','employee-package','other']);
+const categories=new Set(['employee-photo','certification','background-screening','aca-roster','e-verify','course','medical-exam','signed-document','credential','employee-package','other']);
 const httpError=(message,statusCode=400)=>Object.assign(new Error(message),{statusCode});
 const clean=(value,max=300)=>String(value??'').trim().slice(0,max);
 
@@ -57,6 +57,14 @@ function openDatabase(){
       updated_at TEXT NOT NULL,
       PRIMARY KEY (user_id, item_key)
     );
+    CREATE TABLE IF NOT EXISTS hr_employee_classifications (
+      employee_key TEXT PRIMARY KEY,
+      access_user_id TEXT,
+      workforce_group TEXT NOT NULL,
+      updated_by TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_hr_classification_access_user ON hr_employee_classifications(access_user_id);
   `);
   const requestColumns=new Set(database.prepare('PRAGMA table_info(hr_document_requests)').all().map(column=>column.name));
   for(const [name,definition] of [
@@ -142,6 +150,30 @@ export function getHrDossierDocument(id){
 export function listHrComplianceItems(userId){
   const database=openDatabase();
   try{return database.prepare('SELECT * FROM hr_compliance_items WHERE user_id = ? ORDER BY item_key').all(clean(userId,100)).map(row=>({userId:row.user_id,key:row.item_key,status:row.status,deadline:row.deadline||'',completedAt:row.completed_at||'',notes:row.notes,updatedBy:row.updated_by,updatedAt:row.updated_at}))}finally{database.close()}
+}
+
+const publicClassification=row=>({employeeKey:row.employee_key,accessUserId:row.access_user_id||'',workforceGroup:row.workforce_group,updatedBy:row.updated_by,updatedAt:row.updated_at});
+
+export function listHrEmployeeClassifications(){
+  const database=openDatabase();
+  try{return database.prepare('SELECT * FROM hr_employee_classifications ORDER BY employee_key').all().map(publicClassification)}finally{database.close()}
+}
+
+export function findHrEmployeeClassification(employeeKeys=[]){
+  const keys=[...new Set([].concat(employeeKeys).map(value=>clean(value,180)).filter(Boolean))];if(!keys.length)return null;
+  const database=openDatabase();
+  try{const placeholders=keys.map(()=>'?').join(',');const row=database.prepare(`SELECT * FROM hr_employee_classifications WHERE employee_key IN (${placeholders}) ORDER BY updated_at DESC LIMIT 1`).get(...keys);return row?publicClassification(row):null}finally{database.close()}
+}
+
+export function updateHrEmployeeClassification(employeeKey,payload={},actorId='system'){
+  const key=clean(employeeKey,180);const group=clean(payload.workforceGroup,30);if(!key||!['operational','clinical'].includes(group))throw httpError('Employee classification must be operational or clinical');
+  const timestamp=new Date().toISOString();const database=openDatabase();
+  try{
+    database.prepare(`INSERT INTO hr_employee_classifications (employee_key,access_user_id,workforce_group,updated_by,updated_at)
+      VALUES (?,?,?,?,?) ON CONFLICT(employee_key) DO UPDATE SET access_user_id=excluded.access_user_id,workforce_group=excluded.workforce_group,updated_by=excluded.updated_by,updated_at=excluded.updated_at`)
+      .run(key,clean(payload.accessUserId,100)||null,group,clean(actorId,100)||'system',timestamp);
+    return publicClassification(database.prepare('SELECT * FROM hr_employee_classifications WHERE employee_key = ?').get(key));
+  }finally{database.close()}
 }
 
 export function updateHrComplianceItem(userId,itemKey,payload={},actorId='system'){

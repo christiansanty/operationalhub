@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, BriefcaseBusiness, Building2, Check,
-  ChevronDown, ChevronRight, CircleAlert, Clock3, ExternalLink, FileCheck2, FileText, FolderOpen,
+  Camera, ChevronDown, ChevronRight, CircleAlert, Clock3, ExternalLink, FileCheck2, FileText, FolderOpen,
   IdCard, Link2, Mail, Paperclip, PenTool, Search, Send, ShieldCheck, Trash2, Upload, UserRound, Users,
 } from 'lucide-react';
 import './human-resources.css';
@@ -79,7 +79,7 @@ const blobBase64 = blob => new Promise((resolve, reject) => {
 });
 
 const clinicalPattern=/\b(md|do|doctor|physician|provider|aprn|pa-c|nurse|rn|lpn|medical assistant|clinical|clinician)\b/i;
-const isClinicalEmployee=employee=>String(employee.source||'').includes('ROSTER - PROVIDERS')||clinicalPattern.test([employee.role,employee.degree,employee.credentialed,employee.license].filter(Boolean).join(' '));
+const isClinicalEmployee=employee=>employee.workforceGroup?employee.workforceGroup==='clinical':String(employee.source||'').includes('ROSTER - PROVIDERS')||clinicalPattern.test([employee.role,employee.degree,employee.credentialed,employee.license].filter(Boolean).join(' '));
 const isDoctorEmployee=employee=>/\b(md|do|doctor|physician)\b|psychiatr/i.test([employee.role,employee.degree,employee.credentialed,employee.license].filter(Boolean).join(' '));
 const suggestedDeadline=(employee,days=30)=>{
   const expiration=employee.expiresOn||employee.expirationDate;
@@ -334,20 +334,29 @@ function ClinicalCompliance({employee,lang,canManage,onRefresh}){
   return <section className="hr-clinical-compliance" data-search-entry><header><ShieldCheck/><div><span>{isEn?'CLINICAL CREDENTIAL READINESS':'PREPARACIÓN DE CREDENCIALES CLÍNICAS'}</span><h2>{doctor?(isEn?'Physician requirements checklist':'Checklist de requisitos del médico'):(isEn?'Clinical personnel requirements checklist':'Checklist de requisitos del personal clínico')}</h2><p>{isEn?'“Conditional” means the requirement depends on duties, payer participation or services. Deadlines shown without a source date are internal follow-up deadlines.':'“Condicional” significa que depende de funciones, pagadores o servicios. Los deadlines sin fecha fuente son fechas internas de seguimiento.'}</p></div></header><div className="hr-compliance-list">{requirements.map(requirement=>{const stored=saved[requirement.key];const status=stored?.status||(requirement.auto?'completed':'pending');const deadline=stored?.deadline||suggestedDeadline(employee,requirement.key==='oig-leie'?30:45);return <article key={requirement.key} className={status}><span className="hr-compliance-check">{status==='completed'?<Check/>:<Clock3/>}</span><div><strong>{requirement.title}</strong><p>{requirement.detail}</p><small>{requirement.required}</small>{requirement.source&&<a href={requirement.source} target="_blank" rel="noreferrer">{isEn?'Official source':'Fuente oficial'}<ExternalLink/></a>}</div><aside><b>{status==='completed'?(isEn?'Completed':'Completado'):status==='not-applicable'?(isEn?'Not applicable':'No aplica'):status==='in-progress'?(isEn?'In progress':'En progreso'):(isEn?'Pending':'Pendiente')}</b><span>Deadline: {deadline}</span>{canManage&&employee.accessUserId&&<div><select value={status} disabled={busyKey===requirement.key} onChange={event=>update(requirement,event.target.value,deadline)}><option value="pending">{isEn?'Pending':'Pendiente'}</option><option value="in-progress">{isEn?'In progress':'En progreso'}</option><option value="completed">{isEn?'Completed':'Completado'}</option><option value="not-applicable">{isEn?'Not applicable':'No aplica'}</option></select><input aria-label={`Deadline ${requirement.title}`} type="date" defaultValue={deadline} onBlur={event=>event.target.value&&event.target.value!==deadline&&update(requirement,status,event.target.value)}/></div>}</aside></article>})}</div></section>;
 }
 
-function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus, onStatusChange, canManage=false, selfService=false, onDossierRefresh }) {
+function EmployeePhotoControl({employee,lang,canManage,selfService,onRefresh}){
+  const isEn=lang==='en';const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const photo=(employee.hrDossier?.documents||[]).find(document=>document.category==='employee-photo');
+  const upload=async event=>{const file=event.target.files?.[0];if(!file)return;setBusy(true);setMessage('');try{const target=selfService?'/api/hr/me/documents':`/api/hr/employee-records/${encodeURIComponent(employee.accessUserId||employee.recordId)}/documents`;const response=await fetch(target,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({filename:file.name,type:file.type||'image/jpeg',category:'employee-photo',base64:await blobBase64(file)})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Photo upload failed');setMessage(isEn?'Photo saved in this employee record.':'Foto guardada en este expediente.');await onRefresh?.()}catch(error){setMessage(error.message)}finally{setBusy(false);event.target.value=''}};
+  return <section className="hr-photo-card"><header><Camera/><div><h3>{isEn?'Employee photo':'Foto del empleado'}</h3><p>{isEn?'Protected identity image stored in this record.':'Imagen protegida de identidad guardada en este expediente.'}</p></div></header><div className="hr-photo-preview">{photo?<img src={photo.fileUrl} alt={employee.name}/>:<span>{employee.initials||String(employee.name||'').split(/\s+/).slice(0,2).map(part=>part[0]).join('')}</span>}</div>{(canManage||selfService)&&<label className="hr-photo-upload"><Camera/>{busy?(isEn?'Saving…':'Guardando…'):(isEn?'Take or upload photo':'Tomar o subir foto')}<input type="file" accept="image/*" capture="user" onChange={upload} disabled={busy}/></label>}{message&&<small className="hr-photo-message">{message}</small>}</section>;
+}
+
+function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus, onStatusChange, onClassificationChange, canManage=false, selfService=false, onDossierRefresh }) {
   const isEn = lang === 'en';
   const files = classifyFiles(employee);
   const completion = completeness(employee, files);
+  const employeePhoto=(employee.hrDossier?.documents||[]).find(document=>document.category==='employee-photo');
+  const pecosCompliance=(employee.hrDossier?.compliance||[]).find(item=>item.key==='pecos');
   const credentials = [
     ['Professional license', 'Licencia profesional', employee.licenseNumber || employee.license],
     ['NPI', 'NPI', employee.npi], ['DEA', 'DEA', employee.dea], ['CAQH', 'CAQH', employee.caqh],
     ['Medicare', 'Medicare', employee.medicare], ['Medicaid', 'Medicaid', employee.medicaid],
+    ...(isClinicalEmployee(employee)?[['PECOS','PECOS',employee.pecos||(pecosCompliance?.status==='completed'?(isEn?'Completed':'Completado'):'')]]:[]),
   ];
   return <div className="hr-record-page">
     <div className="hr-record-top">{onBack&&<button onClick={onBack}><ArrowLeft/>{isEn ? 'Back to Human Resources' : 'Volver a Recursos Humanos'}</button>}<span><ShieldCheck/> {employee.source || 'Human Resources'}</span></div>
     <div className="hr-record-shell">
       <section className="hr-record-hero">
-        <div className="hr-record-avatar">{employee.initials || employee.name?.split(' ').map(part => part[0]).slice(0, 2).join('')}</div>
+        <div className="hr-record-avatar">{employeePhoto?<img src={employeePhoto.fileUrl} alt={employee.name}/>:employee.initials || employee.name?.split(' ').map(part => part[0]).slice(0, 2).join('')}</div>
         <div className="hr-record-identity"><span>{isEn ? 'EMPLOYEE RECORD' : 'EXPEDIENTE DEL EMPLEADO'}</span><h1>{employee.name}</h1><p>{employee.role || (isEn ? 'Position pending' : 'Puesto pendiente')} · {employee.entity || (isEn ? 'Entity pending' : 'Entidad pendiente')}</p><div><b className={employmentStatus}>{employmentStatus === 'active' ? (isEn ? 'Active' : 'Activo') : (isEn ? 'Inactive' : 'Inactivo')}</b><span>{employee.workMode === 'onsite' ? (isEn ? 'On-site' : 'Presencial') : employee.workMode || (isEn ? 'Work mode pending' : 'Modalidad pendiente')}</span></div></div>
         <div className="hr-completion"><strong>{completion}%</strong><span>{isEn ? 'record complete' : 'expediente completo'}</span><div><i style={{ width: `${completion}%` }}/></div></div>
       </section>
@@ -368,6 +377,8 @@ function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus
           <EmployeeWorkflowDocuments employee={employee} lang={lang} canManage={canManage} selfService={selfService} onRefresh={onDossierRefresh}/>
         </main>
         <aside>
+          <EmployeePhotoControl employee={employee} lang={lang} canManage={canManage} selfService={selfService} onRefresh={onDossierRefresh}/>
+          <section className="hr-classification-card"><header><BriefcaseBusiness/><div><h3>{isEn?'Employee classification':'Clasificación del empleado'}</h3><p>{isEn?'Manual Human Resources assignment overrides automatic classification.':'La selección manual de Recursos Humanos reemplaza la clasificación automática.'}</p></div></header>{canManage?<select value={isClinicalEmployee(employee)?'clinical':'operational'} onChange={event=>onClassificationChange?.(event.target.value)}><option value="operational">{isEn?'Operational employee':'Empleado operacional'}</option><option value="clinical">{isEn?'Clinical employee':'Empleado clínico'}</option></select>:<strong>{isClinicalEmployee(employee)?(isEn?'Clinical employee':'Empleado clínico'):(isEn?'Operational employee':'Empleado operacional')}</strong>}</section>
           <section className="hr-checklist-card"><header><BadgeCheck/><div><h3>{isEn ? 'Employee package checklist' : 'Checklist del employee package'}</h3><p>{isEn ? 'Current source readiness' : 'Disponibilidad en la fuente actual'}</p></div></header>{[
             [isEn ? 'Identity and position' : 'Identidad y posición', employee.name && employee.role],
             [isEn ? 'Primary entity' : 'Entidad principal', employee.entity],
@@ -394,21 +405,23 @@ export default function HumanResources({ lang, employees:sourceEmployees = [], s
   const [section, setSection] = useState('employees');
   const [workforce,setWorkforce]=useState('operational');
   const [dossiers,setDossiers]=useState([]);
+  const [recordDossiers,setRecordDossiers]=useState([]);
+  const [classifications,setClassifications]=useState([]);
   const [loadingDossiers,setLoadingDossiers]=useState(true);
   const [dossierError,setDossierError]=useState('');
   const [statusOverrides, setStatusOverrides] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operational-hub-employee-status') || '{}'); } catch { return {}; }
   });
   const employeeKey = employee => employee.accessUserId || employee.recordId || employee.name;
-  const loadDossiers=async()=>{setLoadingDossiers(true);setDossierError('');try{const response=await fetch(canManage?'/api/hr/dossiers':'/api/hr/me/dossier');const payload=await response.json();if(!response.ok)throw new Error(payload.error);setDossiers(canManage?(payload.dossiers||[]):payload.dossier?[payload.dossier]:[])}catch(error){setDossierError(error.message|| (isEn?'The employee record could not be loaded.':'No se pudo cargar el expediente.'))}finally{setLoadingDossiers(false)}};
+  const loadDossiers=async()=>{setLoadingDossiers(true);setDossierError('');try{const response=await fetch(canManage?'/api/hr/dossiers':'/api/hr/me/dossier');const payload=await response.json();if(!response.ok)throw new Error(payload.error);setDossiers(canManage?(payload.dossiers||[]):payload.dossier?[payload.dossier]:[]);setRecordDossiers(canManage?(payload.recordDossiers||[]):[]);setClassifications(canManage?(payload.classifications||[]):payload.dossier?.classification?[payload.dossier.classification]:[])}catch(error){setDossierError(error.message|| (isEn?'The employee record could not be loaded.':'No se pudo cargar el expediente.'))}finally{setLoadingDossiers(false)}};
   useEffect(()=>{loadDossiers()},[session?.id,canManage,isEn]);
   const employees=useMemo(()=>{
-    const byEmail=new Map(dossiers.map(dossier=>[String(dossier.user?.email||'').toLowerCase(),dossier]));const matched=new Set();
-    const roster=sourceEmployees.map(employee=>{const dossier=byEmail.get(String(employee.email||'').toLowerCase());if(dossier)matched.add(dossier.user.id);return {...employee,...(dossier?{name:dossier.user.name||employee.name,email:dossier.user.email||employee.email,accessUserId:dossier.user.id,hrDossier:dossier}: {})}});
-    const accountOnly=dossiers.filter(dossier=>!matched.has(dossier.user.id)).map(dossier=>({...dossier.provider,recordId:dossier.provider?.recordId||`access-${dossier.user.id}`,accessUserId:dossier.user.id,name:dossier.user.name,email:dossier.user.email,initials:dossier.provider?.initials||String(dossier.user.name||'').split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase(),role:dossier.provider?.role||(isEn?'Operational employee':'Personal operacional'),entity:dossier.provider?.entity||(isEn?'Entity pending':'Entidad pendiente'),degree:dossier.provider?.degree||'',lifecycle:dossier.user.employmentStatus==='inactive'?'inactive':'active',status:dossier.user.employmentStatus,sourceAttachments:dossier.provider?.sourceAttachments||[],source:dossier.provider?.source||'Operational Hub · Identity',hrDossier:dossier}));
+    const byEmail=new Map(dossiers.map(dossier=>[String(dossier.user?.email||'').toLowerCase(),dossier]));const byRecord=new Map(recordDossiers.map(dossier=>[dossier.recordId,dossier]));const classificationByKey=new Map(classifications.map(item=>[item.employeeKey,item]));const matched=new Set();
+    const roster=sourceEmployees.map(employee=>{const dossier=byEmail.get(String(employee.email||'').toLowerCase());const recordDossier=byRecord.get(employee.recordId);if(dossier)matched.add(dossier.user.id);const combinedDossier=dossier||recordDossier||null;const classification=classificationByKey.get(employee.recordId)||classificationByKey.get(dossier?.user?.id)||combinedDossier?.classification;return {...employee,workforceGroup:classification?.workforceGroup||'',...(combinedDossier?{hrDossier:combinedDossier}:{}),...(dossier?{name:dossier.user.name||employee.name,email:dossier.user.email||employee.email,accessUserId:dossier.user.id}: {})}});
+    const accountOnly=dossiers.filter(dossier=>!matched.has(dossier.user.id)).map(dossier=>{const recordId=dossier.provider?.recordId||`access-${dossier.user.id}`;const classification=classificationByKey.get(recordId)||classificationByKey.get(dossier.user.id)||dossier.classification;return {...dossier.provider,recordId,accessUserId:dossier.user.id,name:dossier.user.name,email:dossier.user.email,initials:dossier.provider?.initials||String(dossier.user.name||'').split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase(),role:dossier.provider?.role||(isEn?'Operational employee':'Personal operacional'),entity:dossier.provider?.entity||(isEn?'Entity pending':'Entidad pendiente'),degree:dossier.provider?.degree||'',lifecycle:dossier.user.employmentStatus==='inactive'?'inactive':'active',status:dossier.user.employmentStatus,sourceAttachments:dossier.provider?.sourceAttachments||[],source:dossier.provider?.source||'Operational Hub · Identity',hrDossier:dossier,workforceGroup:classification?.workforceGroup||''}});
     if(!canManage&&dossiers[0]){const own=[...roster,...accountOnly].find(employee=>employee.accessUserId===dossiers[0].user.id);return own?[own]:accountOnly}
     return [...roster,...accountOnly];
-  },[sourceEmployees,dossiers,canManage,isEn]);
+  },[sourceEmployees,dossiers,recordDossiers,classifications,canManage,isEn]);
   useEffect(()=>{if(!selected)return;const refreshed=employees.find(employee=>employeeKey(employee)===employeeKey(selected));if(refreshed&&refreshed!==selected)setSelected(refreshed)},[employees]);
   const getStatus = employee => statusOverrides[employeeKey(employee)] || (employee.lifecycle === 'inactive' ? 'inactive' : 'active');
   const setEmployeeStatus = (employee, status) => {
@@ -416,6 +429,7 @@ export default function HumanResources({ lang, employees:sourceEmployees = [], s
     setStatusOverrides(next);
     localStorage.setItem('operational-hub-employee-status', JSON.stringify(next));
   };
+  const setEmployeeClassification=async(employee,workforceGroup)=>{const key=employee.recordId||employee.accessUserId;if(!key)return;const response=await fetch(`/api/hr/employee-classifications/${encodeURIComponent(key)}`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({workforceGroup,accessUserId:employee.accessUserId||''})});const payload=await response.json();if(!response.ok){setDossierError(payload.error|| (isEn?'The classification could not be saved.':'No se pudo guardar la clasificación.'));return}setClassifications(current=>[payload.classification,...current.filter(item=>item.employeeKey!==payload.classification.employeeKey)]);setSelected(current=>current?{...current,workforceGroup}:current)};
   const workforceEmployees=useMemo(()=>employees.filter(employee=>workforce==='clinical'?isClinicalEmployee(employee):!isClinicalEmployee(employee)),[employees,workforce]);
   const positions = useMemo(() => [...new Set(workforceEmployees.map(employee => employee.role).filter(Boolean))].sort(), [workforceEmployees]);
   const filtered = useMemo(() => workforceEmployees.filter(employee => {
@@ -426,7 +440,7 @@ export default function HumanResources({ lang, employees:sourceEmployees = [], s
   const groups = useMemo(() => Object.entries(filtered.reduce((acc, employee) => { const key = employee.role || (isEn ? 'Position pending' : 'Puesto pendiente'); (acc[key] ||= []).push(employee); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b)), [filtered, isEn]);
   if(loadingDossiers)return <div className="page hr-page"><div className="hr-no-results"><Clock3/><h2>{isEn?'Loading your protected employee record…':'Cargando tu expediente protegido…'}</h2></div></div>;
   if(!canManage){const employee=employees[0];if(!employee)return <div className="page hr-page"><div className="hr-no-results"><CircleAlert/><h2>{isEn?'Your employee record is not available':'Tu expediente laboral no está disponible'}</h2><p>{dossierError}</p></div></div>;return <EmployeeRecord employee={employee} lang={lang} sourceStatus={sourceStatus} employmentStatus={getStatus(employee)} onStatusChange={()=>{}} canManage={false} selfService onDossierRefresh={loadDossiers}/>}
-  if (selected) return <EmployeeRecord employee={selected} lang={lang} sourceStatus={sourceStatus} onBack={() => setSelected(null)} employmentStatus={getStatus(selected)} onStatusChange={status => setEmployeeStatus(selected, status)} canManage onDossierRefresh={loadDossiers}/>;
+  if (selected) return <EmployeeRecord employee={selected} lang={lang} sourceStatus={sourceStatus} onBack={() => setSelected(null)} employmentStatus={getStatus(selected)} onStatusChange={status => setEmployeeStatus(selected, status)} onClassificationChange={workforceGroup=>setEmployeeClassification(selected,workforceGroup)} canManage onDossierRefresh={loadDossiers}/>;
   const attached = employees.reduce((total, employee) => total + (employee.sourceAttachments?.length || 0), 0);
   return <div className="page hr-page">
     <div className="page-title hr-title"><div><span className="eyebrow">{isEn ? 'HUMAN RESOURCES · EMPLOYEE RECORDS' : 'RECURSOS HUMANOS · EXPEDIENTES'}</span><h1>{isEn?'Human Resources':'Recursos Humanos'}</h1><p>{isEn ? 'Employees organized by position with their complete Human Resources record, employee package, licenses and signed documents.' : 'Empleados organizados por posición con su expediente de Recursos Humanos, employee package, licencias y documentos firmados.'}</p></div><span className="hr-source-badge"><ShieldCheck/><strong>{sourceStatus?.source || 'EM-MSO · Human Resource'}</strong><small>{sourceStatus?.state==='connected'?(isEn?'Protected sync active':'Sincronización protegida activa'):(isEn?'Human Resource permission pending':'Permiso de Human Resource pendiente')}</small></span></div>

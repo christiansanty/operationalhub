@@ -15,8 +15,9 @@ import { getAiEngineStatus, runOperationalAi } from './ai-engine.mjs';
 import { createHrPackage, deleteHrPackage, getHrPackage, listHrPackages } from './hr-package-store.mjs';
 import {
   archiveHrDocument, createHrDocumentRequest, deleteHrDossierDocument, findHrDocumentByExternalReference,
-  findHrDocumentRequestsByExternalReference, getHrDossierDocument, getHrDocumentRequest,
-  listHrComplianceItems, listHrDossierDocuments, listHrDocumentRequests, updateHrComplianceItem,
+  findHrDocumentRequestsByExternalReference, findHrEmployeeClassification, getHrDossierDocument, getHrDocumentRequest,
+  listHrComplianceItems, listHrDossierDocuments, listHrDocumentRequests, listHrEmployeeClassifications,
+  updateHrComplianceItem, updateHrEmployeeClassification,
 } from './hr-dossier-store.mjs';
 import { createDocusignEnvelope, downloadDocusignCombinedDocument, getDocusignStatus, verifyDocusignConnectSignature } from './docusign.mjs';
 import {
@@ -53,12 +54,7 @@ const operationalPermissionKeys = [
 
 function requestIdentity(request) {
   const token=accessToken(request);
-  const session=resolveAccessSession(token);
-  if(session)return session;
-  // A revoked or expired real cookie must never fall back to the local demo identity.
-  if(token)return null;
-  const demoAllowed=process.env.NODE_ENV!=='production'&&process.env.OPERATIONAL_HUB_DEMO_ADMIN!=='false';
-  return demoAllowed?{id:'demo-admin',learnerId:'demo-admin',role:'owner',scope:'full',permissions:{},demo:true}:null;
+  return token?resolveAccessSession(token):null;
 }
 
 function permissionLevel(session,key){
@@ -83,14 +79,20 @@ function academyRecordActor(request,learnerId,required='view'){
 function filteredOperationalSnapshot(actor){
   const snapshot=getOperationalSnapshot();
   if(actor?.role==='owner'||actor?.role==='admin'||actor?.scope==='full')return snapshot;
-  const broadProviderAccess=hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['doctor-licenses','licenses','entity-medical','entity-care305','entity-aesthetics','entity-research']);
+  const broadProviderAccess=hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['doctor-licenses','licenses']);
   const canViewOwnProvider=hasModuleAccess(actor,'human-resources');
   const canContracts=hasModuleAccess(actor,'contracting');
   const canLicenses=hasModuleAccess(actor,['licenses','doctor-licenses']);
   const canEntities=hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research']);
+  const entityProviderAccess=hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics','entity-research']);
+  const ownProviders=canViewOwnProvider?snapshot.providers.filter(item=>String(item.email||'').toLowerCase()===String(actor.email||'').toLowerCase()):[];
+  const entityProviderSummaries=entityProviderAccess?snapshot.providers.filter(item=>{
+    if(item.entity==='Eastern Medical Research')return hasModuleAccess(actor,'entity-research');
+    return hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics']);
+  }).map(item=>({recordId:item.recordId,name:item.name,status:item.status,degree:item.degree,credentialed:item.credentialed,role:item.role,entity:item.entity,lifecycle:item.lifecycle,workMode:item.workMode,initials:item.initials,source:'Restricted entity directory'})):[];
   return {
     status:snapshot.status,
-    providers:broadProviderAccess?snapshot.providers:canViewOwnProvider?snapshot.providers.filter(item=>String(item.email||'').toLowerCase()===String(actor.email||'').toLowerCase()):[],
+    providers:broadProviderAccess?snapshot.providers:ownProviders.length?ownProviders:entityProviderSummaries,
     contracts:canContracts?snapshot.contracts:[],
     licenses:canLicenses?snapshot.licenses:[],
     entities:canEntities?snapshot.entities:[],
@@ -112,6 +114,7 @@ async function hrDossierFor(user){
     requests:listHrDocumentRequests(user.id),
     compliance:listHrComplianceItems(user.id),
     aca:{background:listAcaRecords('background').filter(belongsToEmployee),roster:listAcaRecords('roster').filter(belongsToEmployee)},
+    classification:findHrEmployeeClassification([provider?.recordId,user.id,`access-${user.id}`]),
   };
 }
 
@@ -149,16 +152,12 @@ function adminActor(request, requireManage = true) {
     || userPermission === 'manage'
     || (!requireManage && userPermission === 'view')
   )) return session;
-  const demoAllowed = process.env.NODE_ENV !== 'production' && process.env.OPERATIONAL_HUB_DEMO_ADMIN !== 'false';
-  if (demoAllowed && request.headers['x-operational-demo-admin'] === 'true') return { id:'demo-admin', role:'owner', name:'Admin', demo:true };
   return null;
 }
 
 function academyManager(request) {
   const session = resolveAccessSession(accessToken(request));
   if (hasModuleAccess(session,'academy','manage')) return session;
-  const demoAllowed = process.env.NODE_ENV !== 'production' && process.env.OPERATIONAL_HUB_DEMO_ADMIN !== 'false';
-  if (demoAllowed && request.headers['x-operational-demo-admin'] === 'true') return { id:'demo-admin', role:'owner', name:'Admin', demo:true };
   return null;
 }
 
@@ -314,7 +313,14 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'GET' && url.pathname === '/api/hr/dossiers') {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
-      return json(response,200,{dossiers:await Promise.all(listAccessUsers().map(hrDossierFor))});
+      const users=listAccessUsers();const dossiers=await Promise.all(users.map(hrDossierFor));const byEmail=new Map(users.map(user=>[String(user.email||'').toLowerCase(),user]));
+      const recordDossiers=getOperationalSnapshot().providers.map(provider=>{const user=byEmail.get(String(provider.email||'').toLowerCase());const storageKey=user?.id||provider.recordId;return {recordId:provider.recordId,storageKey,documents:listHrDossierDocuments(storageKey),classification:findHrEmployeeClassification([provider.recordId,storageKey,`access-${storageKey}`])}});
+      return json(response,200,{dossiers,recordDossiers,classifications:listHrEmployeeClassifications()});
+    }
+    if (request.method === 'PUT' && /^\/api\/hr\/employee-classifications\/[^/]+$/.test(url.pathname)) {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
+      const employeeKey=decodeURIComponent(url.pathname.split('/')[4]);const body=await readJson(request);
+      return json(response,200,{classification:updateHrEmployeeClassification(employeeKey,body,actor.id)});
     }
     if (request.method === 'POST' && /^\/api\/hr\/employees\/[^/]+\/document-requests$/.test(url.pathname)) {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
@@ -342,6 +348,12 @@ const server = createServer(async (request, response) => {
       const userId=decodeURIComponent(url.pathname.split('/')[4]);
       if(!listAccessUsers().some(item=>item.id===userId))return json(response,404,{error:'Employee record not found'});
       return json(response,201,{document:await archiveHrDocument(userId,await readJson(request,42*1024*1024),actor.id,'human-resources-upload')});
+    }
+    if (request.method === 'POST' && /^\/api\/hr\/employee-records\/[^/]+\/documents$/.test(url.pathname)) {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
+      const employeeKey=decodeURIComponent(url.pathname.split('/')[4]);const knownProvider=getOperationalSnapshot().providers.some(item=>item.recordId===employeeKey);const knownUser=listAccessUsers().some(item=>item.id===employeeKey);
+      if(!knownProvider&&!knownUser)return json(response,404,{error:'Employee record not found'});
+      return json(response,201,{document:await archiveHrDocument(employeeKey,await readJson(request,42*1024*1024),actor.id,'human-resources-photo')});
     }
     if (request.method === 'POST' && url.pathname === '/api/hr/integrations/document-return') {
       const configuredKey=process.env.HR_DOCUMENT_RETURN_KEY;
@@ -422,7 +434,8 @@ const server = createServer(async (request, response) => {
       if(!attachment||await access(attachment.filePath).then(()=>false).catch(()=>true))return json(response,404,{error:'Attachment not found'});
       const actor=requestIdentity(request);const attachmentKeys=attachment.permissionKeys||operationalPermissionKeys;const isHrAttachment=attachmentKeys.includes('human-resources');const ownHrAttachment=isHrAttachment&&attachment.ownerEmail&&String(attachment.ownerEmail).toLowerCase()===String(actor?.email||'').toLowerCase()&&hasModuleAccess(actor,'human-resources');
       const nonHrKeys=attachmentKeys.filter(key=>key!=='human-resources');
-      if(!ownHrAttachment&&!(isHrAttachment&&hasModuleAccess(actor,'human-resources','manage'))&&!hasModuleAccess(actor,nonHrKeys))return json(response,403,{error:'Attachment access required'});
+      const privilegedHrAttachment=isHrAttachment&&(hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['licenses','doctor-licenses']));
+      if(isHrAttachment?!ownHrAttachment&&!privilegedHrAttachment:!hasModuleAccess(actor,nonHrKeys))return json(response,403,{error:'Attachment access required'});
       const safeName=attachment.filename.replace(/["\r\n]/g,'_');
       response.writeHead(200,{'content-type':attachment.type||'application/octet-stream','content-disposition':`inline; filename="${safeName}"`,'cache-control':'private, max-age=3600'});
       return createReadStream(attachment.filePath).pipe(response);

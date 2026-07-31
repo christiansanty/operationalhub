@@ -25,6 +25,7 @@ export const canSessionAccessPage = (session, page) => {
   if (!session) return false;
   if (page === 'corporate') return session.role === 'owner' || session.scope === 'full';
   if (page === 'roadmap') return session.role === 'admin' || session.role === 'owner' || session.scope === 'full';
+  if (page === 'team') return permissionLevel(session, 'academy') === 'manage';
   if (page === 'staff') return true;
   const key = pagePermissionKey(page);
   if (!key) return false;

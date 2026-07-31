@@ -168,9 +168,9 @@ function fileToTrainingImage(file) {
   });
 }
 
-function VisualEvidenceLab({ moduleIndex, lessonTitle, lang }) {
+function VisualEvidenceLab({ moduleIndex, lessonTitle, lang, learnerKey='anonymous' }) {
   const isEn = lang === 'en';
-  const storageKey = `ema-aesthetics-approved-cases-v1-${moduleIndex}`;
+  const storageKey = `ema-aesthetics-approved-cases-v1-${learnerKey}-${moduleIndex}`;
   const [cases, setCases] = useState(() => { try { return JSON.parse(localStorage.getItem(storageKey) || '[]'); } catch { return []; } });
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(blankCase);
@@ -257,10 +257,10 @@ function FinancingKnowledgeLab({ lang }) {
   </section>;
 }
 
-export default function AestheticsModuleExperience({ lesson, moduleIndex, lang }) {
+export default function AestheticsModuleExperience({ lesson, moduleIndex, lang, learnerKey='anonymous' }) {
   const isEn = lang === 'en';
   const sections = useMemo(() => lesson.sections.filter((section) => !/approval standard/i.test(section[0])), [lesson]);
-  const storageKey = `ema-aesthetics-sections-v1-${moduleIndex}`;
+  const storageKey = `ema-aesthetics-sections-v1-${learnerKey}-${moduleIndex}`;
   const [reviewed, setReviewed] = useState(() => { try { return new Set(JSON.parse(localStorage.getItem(storageKey) || '[]')); } catch { return new Set(); } });
   const [openSection, setOpenSection] = useState(0);
   const faqs = moduleFaqs[moduleIndex] || [];
@@ -277,7 +277,7 @@ export default function AestheticsModuleExperience({ lesson, moduleIndex, lang }
     {!!faqs.length && <section className="aesthetics-faq"><header><span><Info size={16}/>{isEn ? 'OFFICIAL RESPONSE PRACTICE' : 'PRÁCTICA DE RESPUESTA OFICIAL'}</span><h2>{isEn ? 'Frequently asked questions' : 'Preguntas frecuentes'}</h2><p>{isEn ? 'Open each answer and practice explaining it without diagnosing, selecting treatment or guaranteeing a result.' : 'Abre cada respuesta y practica explicarla sin diagnosticar, seleccionar tratamiento ni garantizar resultados.'}</p></header><div>{faqs.map(([question, answer], index) => <details key={question.en}><summary><i>{String(index + 1).padStart(2, '0')}</i><strong>{question[lang]}</strong><ChevronDown size={18}/></summary><p>{answer[lang]}</p></details>)}</div></section>}
     {moduleIndex === 1 && <LeadResponseLab lang={lang}/>}
     {moduleIndex === 17 && <FinancingKnowledgeLab lang={lang}/>}
-    {visualFocus[moduleIndex] && <VisualEvidenceLab moduleIndex={moduleIndex} lessonTitle={lesson.title[isEn ? 0 : 1]} lang={lang}/>}
+    {visualFocus[moduleIndex] && <VisualEvidenceLab moduleIndex={moduleIndex} lessonTitle={lesson.title[isEn ? 0 : 1]} lang={lang} learnerKey={learnerKey}/>}
     <footer className="aesthetics-module-standard"><ShieldCheck size={23}/><div><span>{isEn ? 'CORPORATE LEARNING STANDARD' : 'ESTÁNDAR DE APRENDIZAJE CORPORATIVO'}</span><strong>{isEn ? 'Knowledge is taught, applied, tested and supervised before clinical privilege.' : 'El conocimiento se enseña, aplica, evalúa y supervisa antes del privilegio clínico.'}</strong><p>{isEn ? 'Academy completion documents learning; it never replaces a license, current IFU/SOP, observed competency or written procedure-specific authorization.' : 'Completar Academy documenta aprendizaje; nunca sustituye licencia, IFU/SOP vigente, competencia observada ni autorización escrita específica del procedimiento.'}</p></div></footer>
   </section>;
 }

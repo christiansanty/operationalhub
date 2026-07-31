@@ -133,7 +133,8 @@ export async function listAcademyLearnerRecords(){
     const profile=await readJson(path.join(folder,'profile.json'),null);
     if(!profile)continue;
     const record=await readJson(path.join(folder,'record.json'),{events:[],certificates:[]});
-    learners.push({profile,summary:{answerCount:Number(record.answerCount||0),completedLessons:Number(record.completedLessons||0),completedCourses:Number(record.completedCourses||0),certificateCount:Array.isArray(record.certificates)?record.certificates.length:0,updatedAt:record.updatedAt||profile.updatedAt}});
+    const answers=(Array.isArray(record.events)?record.events:[]).filter(event=>event.type==='answer');
+    learners.push({profile,summary:{answerCount:answers.length,correctAnswerCount:answers.filter(event=>event.correct===true).length,completedLessons:Number(record.completedLessons||0),completedCourses:Number(record.completedCourses||0),certificateCount:Array.isArray(record.certificates)?record.certificates.length:0,updatedAt:record.updatedAt||profile.updatedAt}});
   }
   return learners.sort((a,b)=>String(b.summary.updatedAt||'').localeCompare(String(a.summary.updatedAt||'')));
 }

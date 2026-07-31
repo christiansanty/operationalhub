@@ -96,9 +96,10 @@ export function AirtableCatalog({ lang, onOpen, courses = airtableCourses }) {
   </section>;
 }
 
-export function AirtableCourseDetail({ course, lang, onBack, onHub, setLang, academyOnly=false }) {
+export function AirtableCourseDetail({ course, lang, onBack, onHub, setLang, academyOnly=false, learner=null }) {
   const isEn = lang === 'en';
-  const storageKey = `ema-airtable-reviewed-${course.id}`;
+  const learnerKey=String(learner?.learnerId||learner?.id||'anonymous').replace(/[^a-zA-Z0-9_-]+/g,'-').slice(0,80);
+  const storageKey = `ema-airtable-reviewed-${learnerKey}-${course.id}`;
   const [reviewed, setReviewed] = useState(() => {
     try { return new Set(JSON.parse(localStorage.getItem(storageKey) || '[]')); } catch { return new Set(); }
   });

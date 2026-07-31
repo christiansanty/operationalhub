@@ -18,7 +18,11 @@ assert.equal(firstAccessiblePage(custom),'staff');
 const academyOnly={id:'academy-employee',role:'employee',scope:'academy',permissions:{academy:'view'}};
 assert.equal(canSessionAccessPage(academyOnly,'staff'),true);
 assert.equal(canSessionManagePage(academyOnly,'staff'),false);
+assert.equal(canSessionAccessPage(academyOnly,'team'),false);
 assert.equal(firstAccessiblePage(academyOnly),'academy');
+const academyManager={id:'academy-manager',role:'employee',scope:'custom',permissions:{academy:'manage'}};
+assert.equal(canSessionAccessPage(academyManager,'team'),true);
+assert.equal(canSessionManagePage(academyManager,'team'),true);
 
 const appOnly={id:'employee-2',role:'employee',scope:'custom',permissions:{'app-marketing-suite':'view'}};
 assert.equal(canSessionAccessPage(appOnly,'hub'),true);
@@ -57,6 +61,12 @@ try{
   assert.equal(hr.listHrDocumentRequests(invited.user.id)[0].status,'received');
   const compliance=hr.updateHrComplianceItem(invited.user.id,'npi',{status:'completed',deadline:'2026-08-31'},'test-admin');
   assert.equal(compliance.status,'completed');
+  const classification=hr.updateHrEmployeeClassification('provider-access-test',{workforceGroup:'clinical',accessUserId:invited.user.id},'test-admin');
+  assert.equal(classification.workforceGroup,'clinical');
+  assert.equal(hr.findHrEmployeeClassification(['provider-access-test',invited.user.id]).employeeKey,'provider-access-test');
+  assert.equal(hr.listHrEmployeeClassifications().some(item=>item.employeeKey==='provider-access-test'),true);
+  const photo=await hr.archiveHrDocument(invited.user.id,{filename:'employee-photo.jpg',type:'image/jpeg',category:'employee-photo',base64:Buffer.from('photo-test').toString('base64')},invited.user.id);
+  assert.equal(photo.category,'employee-photo');
   const envelopeId='envelope-test-001';
   const packageRequestA=hr.createHrDocumentRequest(invited.user.id,{title:'Employee Package A',category:'employee-package',packageId:'package-a',deliveryMethod:'docusign',externalReference:envelopeId},'test-admin');
   hr.createHrDocumentRequest(invited.user.id,{title:'Employee Package B',category:'employee-package',packageId:'package-b',deliveryMethod:'docusign',externalReference:envelopeId},'test-admin');

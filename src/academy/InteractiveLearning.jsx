@@ -118,8 +118,8 @@ function genericLab(course,lesson,lang,scope){
   };
 }
 
-export default function InteractiveLearning({course,lesson,active,lang,scope,onPracticeChange,onRecord}){
-  const isEn=lang==='en'; const courseKey=course.id==='aesthetics'?'aesthetics-certification-v1':course.id; const key=`${courseKey}-${active}`;
+export default function InteractiveLearning({course,lesson,active,lang,scope,learnerKey='anonymous',onPracticeChange,onRecord}){
+  const isEn=lang==='en'; const courseKey=course.id==='aesthetics'?'aesthetics-certification-v1':course.id; const key=`${learnerKey}-${courseKey}-${active}`;
   const [tab,setTab]=useState('explore');
   const [answer,setAnswer]=useState(()=>{const saved=localStorage.getItem(`ema-practice-${key}`);return saved===null?null:Number(saved)});
   const [validated,setValidated]=useState(()=>localStorage.getItem(`ema-validated-${key}`)==='true');
