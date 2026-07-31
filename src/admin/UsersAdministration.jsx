@@ -67,7 +67,7 @@ function PermissionSelector({ modules, permissions, onChange, onChangeAll, disab
     <div>{modules.filter(module => module.group === group).map(module => {
       const selected = ['view','manage'].includes(permissions[module.id]);
       return <article key={module.id} className={selected ? 'selected' : ''}>
-        <label className="permission-checkbox"><input type="checkbox" checked={selected} disabled={disabled} onChange={event => onChange(module.id, event.target.checked ? 'view' : 'none')}/><span><strong>{module.label}</strong><small>{selected ? (permissions[module.id] === 'manage' ? (isEn ? 'Can manage' : 'Puede gestionar') : (isEn ? 'Can view' : 'Puede ver')) : (isEn ? 'No access' : 'Sin acceso')}</small></span></label>
+        <label className="permission-checkbox"><input type="checkbox" checked={selected} disabled={disabled} onChange={event => onChange(module.id, event.target.checked ? 'view' : 'none')}/><span><strong>{module.label}</strong><small>{module.id==='human-resources'?(permissions[module.id]==='manage'?(isEn?'All employee records':'Todos los expedientes'):(isEn?'Personal record is always available':'El expediente propio siempre está disponible')):selected ? (permissions[module.id] === 'manage' ? (isEn ? 'Can manage' : 'Puede gestionar') : (isEn ? 'Can view' : 'Puede ver')) : (isEn ? 'No access' : 'Sin acceso')}</small></span></label>
         <div className="permission-segmented" aria-label={`${module.label} · ${isEn ? 'permission level' : 'nivel de permiso'}`}>{['view','manage'].map(value => <button type="button" key={value} disabled={disabled || !selected} className={permissions[module.id] === value ? 'active' : ''} onClick={() => onChange(module.id, value)}>{value === 'view' ? (isEn ? 'View' : 'Ver') : (isEn ? 'Manage' : 'Gestionar')}</button>)}</div>
       </article>;
     })}</div>
@@ -167,7 +167,16 @@ export default function UsersAdministration({ lang, session, canManage = true })
     setError(''); setFieldErrors({}); setMenuId(''); setModal(true);
   };
   const closeModal = () => { if (!saving) { setModal(false); setEditingId(''); setError(''); setFieldErrors({}) } };
-  const changeProfile = profile => { setError(''); setDraft(current => ({ ...current, accessProfile:profile, permissions:permissionsForProfile(profile, modules, current.permissions) })) };
+  const changeProfile = profile => {
+    setError('');
+    setDraft(current => ({
+      ...current,
+      accessProfile:profile,
+      permissions:profile === 'custom'
+        ? (current.accessProfile === 'custom' ? current.permissions : blankPermissions(modules))
+        : permissionsForProfile(profile, modules, current.permissions),
+    }));
+  };
   const changePermission = (id, value) => { setError(''); setDraft(current => ({ ...current, permissions:{ ...current.permissions, [id]:value } })) };
   const changeAllPermissions = value => { setError(''); setDraft(current => ({ ...current, permissions:{ ...current.permissions, ...Object.fromEntries(modules.map(module => [module.id, value])) } })) };
   const save = async event => {
@@ -205,8 +214,9 @@ export default function UsersAdministration({ lang, session, canManage = true })
           expiresAt:payload.invitation.expiresAt,
         });
       } else {
-        setNotice({ type:'updated', email:draft.email });
+        setNotice({ type:'updated', email:draft.email, sessionsRevoked:payload.sessionsRevoked });
       }
+      localStorage.setItem('operational-hub-access-updated',String(Date.now()));
       setModal(false); setEditingId('');
       await load();
     } catch (requestError) {
@@ -242,7 +252,7 @@ export default function UsersAdministration({ lang, session, canManage = true })
     <header className="users-admin-title"><div><span>ADMINISTRATION · IDENTITY & ACCESS</span><h1>{isEn ? 'Users & access' : 'Usuarios y accesos'}</h1><p>{isEn ? 'Invite employees, control every section and monitor account activation from one secure directory.' : 'Invita empleados, controla cada sección y supervisa la activación de cuentas desde un directorio seguro.'}</p></div>{canManage && <button onClick={openInvite}><UserPlus/>{isEn ? 'Invite user' : 'Invitar usuario'}</button>}</header>
     <section className="users-system-strip"><div className={system?.email.configured ? 'ready' : 'preview'}>{system?.email.configured ? <CheckCircle2/> : <Mail/>}<span><strong>{system?.email.configured ? (isEn ? 'Automatic email delivery active' : 'Envío automático activo') : (isEn ? 'Email provider not connected' : 'Proveedor de email no conectado')}</strong><small>{system?.email.configured ? `${system.email.provider} · ${system.email.from}` : (isEn ? 'Invitations provide a development link until Resend is configured.' : 'Las invitaciones muestran un enlace de desarrollo hasta configurar Resend.')}</small></span></div><div><ShieldCheck/><span><strong>{isEn ? 'Server-verified access' : 'Acceso verificado por el servidor'}</strong><small>{isEn ? 'Passwords, sessions and permissions are no longer stored in the browser.' : 'Contraseñas, sesiones y permisos ya no se guardan en el navegador.'}</small></span></div></section>
     <section className="users-admin-metrics"><article><Users/><div><strong>{users.length}</strong><span>{isEn ? 'Total users' : 'Usuarios totales'}</span></div></article><article><UserCheck/><div><strong>{active}</strong><span>{isEn ? 'Active accounts' : 'Cuentas activas'}</span></div></article><article><Mail/><div><strong>{pending}</strong><span>{isEn ? 'Pending invitations' : 'Invitaciones pendientes'}</span></div></article><article><LockKeyhole/><div><strong>{modules.length}</strong><span>{isEn ? 'Controlled sections' : 'Secciones controladas'}</span></div></article></section>
-    {notice && <section className={`users-invite-notice ${notice.type}`}><span>{notice.type === 'sent' ? <Send/> : notice.type === 'updated' ? <Check/> : <KeyRound/>}</span><div><strong>{notice.type === 'sent' ? (isEn ? 'Invitation email sent' : 'Email de invitación enviado') : notice.type === 'updated' ? (isEn ? 'Access updated' : 'Acceso actualizado') : notice.copied ? (isEn ? 'Invitation link copied' : 'Enlace copiado') : (isEn ? 'Development invitation ready' : 'Invitación de desarrollo lista')}</strong><p>{notice.type === 'preview' ? (isEn ? `Email delivery is not configured. Share this one-time link with ${notice.email}.` : `El envío de email no está configurado. Comparte este enlace de un solo uso con ${notice.email}.`) : notice.email}</p>{notice.url && <div><input readOnly value={notice.url}/><button onClick={() => copyLink(notice.url)}><Copy/>{isEn ? 'Copy' : 'Copiar'}</button></div>}</div><button className="notice-close" onClick={() => setNotice(null)}><X/></button></section>}
+    {notice && <section className={`users-invite-notice ${notice.type}`}><span>{notice.type === 'sent' ? <Send/> : notice.type === 'updated' ? <Check/> : <KeyRound/>}</span><div><strong>{notice.type === 'sent' ? (isEn ? 'Invitation email sent' : 'Email de invitación enviado') : notice.type === 'updated' ? (isEn ? 'Access updated' : 'Acceso actualizado') : notice.copied ? (isEn ? 'Invitation link copied' : 'Enlace copiado') : (isEn ? 'Development invitation ready' : 'Invitación de desarrollo lista')}</strong><p>{notice.type === 'preview' ? (isEn ? `Email delivery is not configured. Share this one-time link with ${notice.email}.` : `El envío de email no está configurado. Comparte este enlace de un solo uso con ${notice.email}.`) : notice.type === 'updated' && notice.sessionsRevoked ? (isEn ? `${notice.email} must sign in again with the newly assigned access.` : `${notice.email} deberá iniciar sesión nuevamente con los accesos recién asignados.`) : notice.email}</p>{notice.url && <div><input readOnly value={notice.url}/><button onClick={() => copyLink(notice.url)}><Copy/>{isEn ? 'Copy' : 'Copiar'}</button></div>}</div><button className="notice-close" onClick={() => setNotice(null)}><X/></button></section>}
     {error && !modal && <p className="users-admin-error"><AlertTriangle/>{error}</p>}
     <section className="users-directory-card">
       <header><div><span>{isEn ? 'ACCESS DIRECTORY' : 'DIRECTORIO DE ACCESO'}</span><h2>{isEn ? 'Operational Hub accounts' : 'Cuentas de Operational Hub'}</h2><p>{isEn ? 'Account status, invitation delivery and effective section access.' : 'Estado de cuenta, entrega de invitación y acceso efectivo por sección.'}</p></div><button onClick={load}><RefreshCw/>{isEn ? 'Refresh' : 'Actualizar'}</button></header>

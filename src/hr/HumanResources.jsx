@@ -13,8 +13,10 @@ const fileGroups = {
 };
 
 function classifyFiles(employee) {
-  const files = employee.sourceAttachments || [];
-  const by = (key) => files.filter((file) => file.category === key || fileGroups[key].test(file.filename || ''));
+  const returned=(employee.hrDossier?.documents||[]).map(document=>({...document,filename:document.filename,returned:true}));
+  const files = [...(employee.sourceAttachments || []),...returned];
+  const aliases={package:['package','employee-package'],signed:['signed','signed-document'],license:['license','credential','certification']};
+  const by = (key) => files.filter((file) => aliases[key].includes(file.category) || fileGroups[key].test(file.filename || ''));
   return { all: files, package: by('package'), signed: by('signed'), license: by('license') };
 }
 
@@ -30,7 +32,7 @@ function Status({ ready, lang }) {
 function FileList({ title, subtitle, files, icon: Icon, lang }) {
   return <section className="hr-file-section">
     <header><span className="hr-file-icon"><Icon/></span><div><h3>{title}</h3><p>{subtitle}</p></div><b>{files.length}</b></header>
-    {files.length ? <div className="hr-file-list">{files.map((file, index) => { const href=file.id?`/api/operational/airtable/attachments/${encodeURIComponent(file.id)}`:''; const content=<><FileText/><div><strong>{file.filename}</strong><span>{file.category || (lang === 'en' ? 'Mapped source document' : 'Documento mapeado en la fuente')}</span></div>{href?<span className="hr-file-open"><Link2/>{lang==='en'?'Open':'Abrir'}</span>:<Status ready lang={lang}/>}</>; return href?<a key={file.id} href={href} target="_blank" rel="noreferrer">{content}</a>:<article key={`${file.filename}-${index}`}>{content}</article>})}</div> : <div className="hr-file-empty"><FolderOpen/><span>{lang === 'en' ? 'No document is currently exposed by the connected source.' : 'La fuente conectada no expone documentos actualmente en esta sección.'}</span></div>}
+    {files.length ? <div className="hr-file-list">{files.map((file, index) => { const href=file.fileUrl||(file.id?`/api/operational/airtable/attachments/${encodeURIComponent(file.id)}`:''); const content=<><FileText/><div><strong>{file.filename}</strong><span>{file.category || (lang === 'en' ? 'Mapped source document' : 'Documento mapeado en la fuente')}</span></div>{href?<span className="hr-file-open"><Link2/>{lang==='en'?'Open':'Abrir'}</span>:<Status ready lang={lang}/>}</>; return href?<a key={file.id} href={href} target="_blank" rel="noreferrer">{content}</a>:<article key={`${file.filename}-${index}`}>{content}</article>})}</div> : <div className="hr-file-empty"><FolderOpen/><span>{lang === 'en' ? 'No document is currently exposed by the connected source.' : 'La fuente conectada no expone documentos actualmente en esta sección.'}</span></div>}
   </section>;
 }
 
@@ -76,6 +78,32 @@ const blobBase64 = blob => new Promise((resolve, reject) => {
   reader.readAsDataURL(blob);
 });
 
+const clinicalPattern=/\b(md|do|doctor|physician|provider|aprn|pa-c|nurse|rn|lpn|medical assistant|clinical|clinician)\b/i;
+const isClinicalEmployee=employee=>String(employee.source||'').includes('ROSTER - PROVIDERS')||clinicalPattern.test([employee.role,employee.degree,employee.credentialed,employee.license].filter(Boolean).join(' '));
+const isDoctorEmployee=employee=>/\b(md|do|doctor|physician)\b|psychiatr/i.test([employee.role,employee.degree,employee.credentialed,employee.license].filter(Boolean).join(' '));
+const suggestedDeadline=(employee,days=30)=>{
+  const expiration=employee.expiresOn||employee.expirationDate;
+  if(expiration){const date=new Date(expiration);if(!Number.isNaN(date.valueOf())){date.setDate(date.getDate()-90);return date.toISOString().slice(0,10)}}
+  const date=new Date();date.setDate(date.getDate()+days);return date.toISOString().slice(0,10);
+};
+const doctorRequirements=(employee,isEn)=>[
+  {key:'fl-medical-license',title:isEn?'Active Florida medical license':'Licencia médica activa de Florida',detail:isEn?'Required to practice medicine in Florida; track renewal, profile, CME and financial-responsibility declarations.':'Requerida para ejercer medicina en Florida; controla renovación, perfil, CME y declaración de responsabilidad financiera.',required:isEn?'Required':'Obligatorio',auto:Boolean(employee.licenseNumber),source:'https://flboardofmedicine.gov/renewals/'},
+  {key:'npi',title:'NPI · NPPES',detail:isEn?'Individual NPI and current NPPES identity/practice information.':'NPI individual e información vigente de identidad y práctica en NPPES.',required:isEn?'Required for standard transactions and Medicare enrollment':'Requerido para transacciones estándar e inscripción Medicare',auto:Boolean(employee.npi),source:'https://www.cms.gov/medicare/enrollment-renewal/providers-suppliers'},
+  {key:'pecos',title:'PECOS · Medicare enrollment',detail:isEn?'Approved Medicare enrollment, reassignment and practice-location information when the physician bills, orders or certifies for Medicare.':'Inscripción Medicare aprobada, reasignación e información de sedes cuando el médico factura, ordena o certifica para Medicare.',required:isEn?'Conditional · Medicare participation/order/certification':'Condicional · participación/órdenes/certificación Medicare',auto:Boolean(employee.medicare),source:'https://www.cms.gov/medicare/enrollment-renewal/providers-suppliers/chain-ownership-system-pecos'},
+  {key:'dea',title:'DEA registration',detail:isEn?'Active registration and expiration tracking when the physician prescribes, administers or dispenses controlled substances.':'Registro activo y control de vencimiento cuando el médico prescribe, administra o dispensa sustancias controladas.',required:isEn?'Conditional · controlled substances':'Condicional · sustancias controladas',auto:Boolean(employee.dea),source:'https://www.dea.gov/drug-information/csa'},
+  {key:'financial-responsibility',title:isEn?'Malpractice / financial responsibility':'Malpractice / responsabilidad financiera',detail:isEn?'Evidence of the applicable Florida financial-responsibility method or documented exemption.':'Evidencia del método aplicable de responsabilidad financiera en Florida o exención documentada.',required:isEn?'Required or documented exemption':'Obligatorio o exención documentada',auto:(employee.sourceAttachments||[]).some(file=>/malpractice|liability|financial responsibility/i.test(file.filename||'')),source:'https://flboardofmedicine.gov/medical-doctor/'},
+  {key:'caqh',title:'CAQH Provider Data Portal',detail:isEn?'Attested credentialing profile and current supporting documents for participating payers.':'Perfil de credentialing atestiguado y documentos vigentes para pagadores participantes.',required:isEn?'Conditional · payer credentialing':'Condicional · credentialing de pagadores',auto:Boolean(employee.caqh),source:'https://www.caqh.org/solutions/caqh-provider-data'},
+  {key:'payer-credentialing',title:isEn?'Payer credentialing and rosters':'Credentialing y rosters de pagadores',detail:isEn?'Approved participation, effective dates and roster linkage for each contracted plan and entity.':'Participación aprobada, fechas efectivas y enlace al roster para cada plan y entidad contratada.',required:isEn?'Required for each billed payer/entity':'Requerido por cada pagador/entidad facturada',auto:Boolean(employee.payerCredentialing),source:''},
+  {key:'oig-leie',title:'OIG · LEIE screening',detail:isEn?'Document exclusion screening at onboarding and on the organization’s recurring monitoring cadence.':'Documenta la verificación de exclusiones al contratar y en la frecuencia recurrente de la organización.',required:isEn?'Required compliance control':'Control de cumplimiento requerido',auto:Boolean(employee.oigScreening),source:'https://oig.hhs.gov/exclusions/'},
+  {key:'cme-ce-broker',title:'CME · CE Broker',detail:isEn?'Required continuing education recorded and ready before the Florida renewal window.':'Educación médica continua registrada y lista antes de la ventana de renovación de Florida.',required:isEn?'Required for renewal':'Requerido para renovación',auto:Boolean(employee.cmeComplete),source:'https://flboardofmedicine.gov/continuing-education-ce/'},
+];
+const clinicalStaffRequirements=(employee,isEn)=>[
+  {key:'professional-credential',title:isEn?'Active professional credential':'Credencial profesional activa',detail:isEn?'Current license, registration or certification required for the assigned clinical role.':'Licencia, registro o certificación vigente requerida para la función clínica asignada.',required:isEn?'Role dependent':'Según la función',auto:Boolean(employee.licenseNumber||employee.license),source:'https://mqa-internet.doh.state.fl.us/MQASearchServices/HealthCareProviders'},
+  {key:'oig-leie',title:'OIG · LEIE screening',detail:isEn?'Document the exclusion check at onboarding and the organization’s recurring cadence.':'Documenta la verificación de exclusiones al contratar y en la frecuencia recurrente de la organización.',required:isEn?'Required compliance control':'Control de cumplimiento requerido',auto:Boolean(employee.oigScreening),source:'https://oig.hhs.gov/exclusions/'},
+  {key:'academy-role-training',title:isEn?'Required Academy training':'Capacitación requerida de Academy',detail:isEn?'Role-specific courses, assessments and certificates archived in this employee record.':'Cursos, evaluaciones y certificados por función archivados en este expediente.',required:isEn?'Required by role':'Requerido por función',auto:Number(employee.hrDossier?.academy?.record?.completedCourses||0)>0,source:''},
+  {key:'bls-cpr',title:'BLS / CPR',detail:isEn?'Maintain current life-support certification when required by the assigned clinical duties.':'Mantén vigente la certificación de soporte vital cuando las funciones clínicas asignadas la requieran.',required:isEn?'Conditional · role and duties':'Condicional · función y responsabilidades',auto:(employee.sourceAttachments||[]).some(file=>/\b(bls|cpr)\b/i.test(file.filename||'')),source:''},
+];
+
 async function syncPackageTemplate(template) {
   if (template.serverId || !template.blob) return template;
   const response = await fetch('/api/hr/packages', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ clientId:template.id, filename:template.name, type:template.type, base64:await blobBase64(template.blob) }) });
@@ -86,6 +114,7 @@ async function syncPackageTemplate(template) {
 
 function EmployeePackageLibrary({ employees, lang }) {
   const isEn = lang === 'en';
+  const eligibleEmployees = employees.filter(employee => employee.accessUserId);
   const [templates, setTemplates] = useState([]);
   const [employeeId, setEmployeeId] = useState('');
   const [recipient, setRecipient] = useState('');
@@ -107,7 +136,7 @@ function EmployeePackageLibrary({ employees, lang }) {
     setTemplateUrls(next);
     return () => Object.values(next).forEach(url => URL.revokeObjectURL(url));
   }, [templates]);
-  const selectedEmployee = employees.find(employee => (employee.recordId || employee.name) === employeeId);
+  const selectedEmployee = eligibleEmployees.find(employee => employee.accessUserId === employeeId);
   const upload = async event => {
     const incoming = [...event.target.files];
     if (!incoming.length) return;
@@ -129,19 +158,24 @@ function EmployeePackageLibrary({ employees, lang }) {
   };
   const chooseEmployee = event => {
     const id = event.target.value;
-    const employee = employees.find(item => (item.recordId || item.name) === id);
+    const employee = eligibleEmployees.find(item => item.accessUserId === id);
     setEmployeeId(id); setRecipient(employee?.email || ''); setMessage(''); setError('');
   };
-  const openEmail = event => {
+  const openEmail = async event => {
     event.preventDefault();
     const files = templates.filter(template => selectedFiles.includes(template.id));
-    if (!employeeId || !recipient.trim() || !files.length) { setError(isEn ? 'Select an employee, enter an email and choose at least one blank document.' : 'Selecciona un empleado, escribe su correo y elige al menos un documento en blanco.'); return; }
+    if (!selectedEmployee?.accessUserId || !recipient.trim() || !files.length) { setError(isEn ? 'Select an employee with an access account, enter an email and choose at least one blank document.' : 'Selecciona un empleado con cuenta de acceso, escribe su correo y elige al menos un documento en blanco.'); return; }
+    if (files.some(file => !file.serverId)) { setError(isEn ? 'Wait until every selected document is synchronized with the protected server.' : 'Espera a que todos los documentos seleccionados se sincronicen con el servidor protegido.'); return; }
     const subject = isEn ? 'Employee Package — documents for signature' : 'Employee Package — documentos para firma';
     const fileList = files.map(file => `• ${file.name}`).join('\n');
     const body = isEn ? `Hello ${selectedEmployee?.name || ''},\n\nPlease review, complete and sign the following Employee Package documents:\n${fileList}\n\nPlease return the completed documents to Human Resources.\n\nThank you.` : `Hola ${selectedEmployee?.name || ''},\n\nPor favor revisa, completa y firma los siguientes documentos del Employee Package:\n${fileList}\n\nDevuelve los documentos completados a Human Resources.\n\nGracias.`;
-    window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    setMessage(isEn ? 'Email draft opened. Attach the selected files shown in this package before sending.' : 'Se abrió el borrador del email. Adjunta los archivos seleccionados de este package antes de enviarlo.');
-    setError('');
+    try {
+      const response=await fetch(`/api/hr/employees/${encodeURIComponent(selectedEmployee.accessUserId)}/document-requests`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({documents:files.map(file=>({title:file.name,category:'employee-package',packageId:file.serverId,deliveryMethod:'email',description:isEn?'Employee Package assigned for completion and return.':'Employee Package asignado para completar y devolver.'}))})});
+      const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Document assignment failed');
+      window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+      setMessage(isEn ? `${payload.requests?.length||files.length} document request(s) linked to this employee record. Attach the selected files before sending.` : `${payload.requests?.length||files.length} solicitud(es) quedaron vinculadas al expediente del empleado. Adjunta los archivos seleccionados antes de enviar.`);
+      setError('');
+    } catch(requestError){setError(requestError.message|| (isEn?'The package could not be assigned.':'No se pudo asignar el package.'))}
   };
   return <div className="hr-package-workspace">
     <section className="hr-package-master">
@@ -149,8 +183,8 @@ function EmployeePackageLibrary({ employees, lang }) {
       {templates.length ? <div className="hr-master-files">{templates.map(template => { const href=template.serverId ? `/api/hr/packages/${encodeURIComponent(template.serverId)}/file` : templateUrls[template.id] || '#'; return <article key={template.id}><div className="hr-master-file-main"><label className="hr-master-check"><input aria-label={isEn ? `Select ${template.name}` : `Seleccionar ${template.name}`} type="checkbox" checked={selectedFiles.includes(template.id)} onChange={event => setSelectedFiles(current => event.target.checked ? [...current, template.id] : current.filter(id => id !== template.id))}/></label><a className="hr-master-file-link" href={href} target="_blank" rel="noreferrer" title={isEn ? `Open ${template.name}` : `Abrir ${template.name}`}><span className="hr-file-icon"><FileText/></span><div><strong>{template.name}</strong><small>{Math.max(1, Math.round(template.size / 1024))} KB · {new Date(template.updatedAt).toLocaleDateString(isEn ? 'en-US' : 'es-US')}</small></div><Link2/></a></div><a href={href} download={template.name}>{isEn ? 'Download' : 'Descargar'}</a><button className="delete" onClick={() => removeTemplate(template)} aria-label={isEn ? `Delete ${template.name}` : `Eliminar ${template.name}`}><Trash2/></button></article>; })}</div> : <div className="hr-package-upload-empty"><Upload/><strong>{isEn ? 'Upload the first blank Employee Package' : 'Sube el primer Employee Package en blanco'}</strong><p>{isEn ? 'PDF and Office documents are stored in this browser until a protected document service is connected.' : 'Los archivos PDF y Office se guardan en este navegador hasta conectar un servicio documental protegido.'}</p></div>}
     </section>
     <form className="hr-package-email" onSubmit={openEmail}>
-      <header><span><Mail/></span><div><small>{isEn ? 'EMAIL DELIVERY' : 'ENVÍO POR EMAIL'}</small><h2>{isEn ? 'Send package to an employee' : 'Enviar package a un empleado'}</h2><p>{isEn ? 'Choose the employee and the blank documents to prepare the email.' : 'Elige el empleado y los documentos en blanco para preparar el correo.'}</p></div></header>
-      <label>{isEn ? 'Employee' : 'Empleado'}<select value={employeeId} onChange={chooseEmployee} required><option value="">{isEn ? 'Select an employee' : 'Selecciona un empleado'}</option>{employees.map(employee => <option key={employee.recordId || employee.name} value={employee.recordId || employee.name}>{employee.name} · {employee.role}</option>)}</select></label>
+      <header><span><Mail/></span><div><small>{isEn ? 'OPTIONAL MANUAL DELIVERY' : 'ENVÍO MANUAL OPCIONAL'}</small><h2>{isEn ? 'Send by email only when an administrator chooses it' : 'Enviar por correo solo cuando lo seleccione un administrador'}</h2><p>{isEn ? 'DocuSign is the primary signature workflow. This fallback still creates a tracked request under the employee record.' : 'DocuSign es el flujo principal de firma. Esta alternativa también crea una solicitud rastreada dentro del expediente del empleado.'}</p></div></header>
+      <label>{isEn ? 'Employee' : 'Empleado'}<select value={employeeId} onChange={chooseEmployee} required><option value="">{isEn ? 'Select an employee with access' : 'Selecciona un empleado con acceso'}</option>{eligibleEmployees.map(employee => <option key={employee.accessUserId} value={employee.accessUserId}>{employee.name} · {employee.role}</option>)}</select></label>
       <label>{isEn ? 'Recipient email' : 'Correo del destinatario'}<input type="email" required value={recipient} onChange={event => setRecipient(event.target.value)} placeholder="employee@company.com"/></label>
       <div className="hr-email-selection"><span>{isEn ? 'Documents selected' : 'Documentos seleccionados'}</span><strong>{selectedFiles.length}</strong></div>
       <p className="hr-email-note"><CircleAlert/>{isEn ? 'For security, the app opens a draft in your email application. Review the recipient and attach the selected files before pressing Send.' : 'Por seguridad, la app abre un borrador en tu aplicación de correo. Revisa el destinatario y adjunta los archivos seleccionados antes de presionar Enviar.'}</p>
@@ -162,6 +196,7 @@ function EmployeePackageLibrary({ employees, lang }) {
 
 function DocuSignWorkspace({ employees, lang }) {
   const isEn = lang === 'en';
+  const eligibleEmployees = employees.filter(employee => employee.accessUserId);
   const [connection, setConnection] = useState({ connected:false, environment:'demo' });
   const [documents, setDocuments] = useState([]);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -190,7 +225,7 @@ function DocuSignWorkspace({ employees, lang }) {
 
   const chooseEmployee = event => {
     const id = event.target.value;
-    const employee = employees.find(item => (item.recordId || item.name) === id);
+    const employee = eligibleEmployees.find(item => item.accessUserId === id);
     setEmployeeId(id);
     setSignerEmail(employee?.email || '');
     setEnvelope(null);
@@ -215,7 +250,7 @@ function DocuSignWorkspace({ employees, lang }) {
   };
   const createEnvelope = async event => {
     event.preventDefault();
-    const employee = employees.find(item => (item.recordId || item.name) === employeeId);
+    const employee = eligibleEmployees.find(item => item.accessUserId === employeeId);
     if (!employee || !signerEmail.trim() || !selectedIds.length) {
       setError(isEn ? 'Select an employee, recipient email and at least one document.' : 'Selecciona un empleado, el correo del destinatario y al menos un documento.');
       return;
@@ -224,7 +259,7 @@ function DocuSignWorkspace({ employees, lang }) {
     try {
       const response = await fetch('/api/integrations/docusign/envelopes', {
         method:'POST', headers:{'content-type':'application/json'},
-        body:JSON.stringify({ packageIds:selectedIds, signerName:employee.name, signerEmail:signerEmail.trim(), emailSubject:subject, emailBlurb:note }),
+        body:JSON.stringify({ packageIds:selectedIds, employeeUserId:employee.accessUserId, signerName:employee.name, signerEmail:signerEmail.trim(), emailSubject:subject, emailBlurb:note }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'DocuSign request failed');
@@ -234,11 +269,12 @@ function DocuSignWorkspace({ employees, lang }) {
     } finally { setBusy(false); }
   };
   const docusignUrl = connection.environment === 'production' ? 'https://app.docusign.com/' : 'https://appdemo.docusign.com/';
+  const workflowReady=connection.connected&&connection.webhookReady;
   return <div className="hr-docusign-workspace">
     <section className="hr-docusign-hero">
       <div className="hr-docusign-mark"><PenTool/></div>
       <div><small>DOCUSIGN ESIGNATURE</small><h2>{isEn ? 'Electronic signature envelopes' : 'Sobres de firma electrónica'}</h2><p>{isEn ? 'Send Employee Package documents to DocuSign as a draft, place the required signature fields and deliver them to the employee.' : 'Envía los documentos del Employee Package a DocuSign como borrador, coloca los campos de firma requeridos y entrégalos al empleado.'}</p></div>
-      <span className={connection.connected ? 'connected' : 'pending'}>{connection.connected ? <Check/> : <CircleAlert/>}{connection.connected ? (isEn ? 'Connected' : 'Conectado') : (isEn ? 'Connection required' : 'Conexión requerida')}</span>
+      <span className={workflowReady ? 'connected' : 'pending'}>{workflowReady ? <Check/> : <CircleAlert/>}{workflowReady ? (isEn ? 'Send + automatic return ready' : 'Envío + retorno automático listo') : connection.connected ? (isEn ? 'Return webhook required' : 'Falta webhook de retorno') : (isEn ? 'Connection required' : 'Conexión requerida')}</span>
     </section>
     <div className="hr-docusign-grid">
       <section className="hr-docusign-documents">
@@ -247,15 +283,15 @@ function DocuSignWorkspace({ employees, lang }) {
       </section>
       <form className="hr-docusign-envelope" onSubmit={createEnvelope}>
         <header><span><Send/></span><div><small>{isEn ? 'NEW ENVELOPE' : 'NUEVO SOBRE'}</small><h3>{isEn ? 'Prepare for signature' : 'Preparar para firma'}</h3></div></header>
-        <label>{isEn ? 'Employee / signer' : 'Empleado / firmante'}<select value={employeeId} onChange={chooseEmployee} required><option value="">{isEn ? 'Select an employee' : 'Selecciona un empleado'}</option>{employees.map(employee => <option key={employee.recordId || employee.name} value={employee.recordId || employee.name}>{employee.name} · {employee.role}</option>)}</select></label>
+        <label>{isEn ? 'Employee / signer' : 'Empleado / firmante'}<select value={employeeId} onChange={chooseEmployee} required><option value="">{isEn ? 'Select an employee with access' : 'Selecciona un empleado con acceso'}</option>{eligibleEmployees.map(employee => <option key={employee.accessUserId} value={employee.accessUserId}>{employee.name} · {employee.role}</option>)}</select></label>
         <label>{isEn ? 'Signer email' : 'Correo del firmante'}<input type="email" value={signerEmail} onChange={event => setSignerEmail(event.target.value)} placeholder="employee@company.com" required/></label>
         <label>{isEn ? 'Email subject' : 'Asunto del correo'}<input value={subject} onChange={event => setSubject(event.target.value)} maxLength={100} required/></label>
         <label>{isEn ? 'Message' : 'Mensaje'}<textarea value={note} onChange={event => setNote(event.target.value)} rows={4}/></label>
         <div className="hr-docusign-count"><FileCheck2/><span>{isEn ? 'Selected documents' : 'Documentos seleccionados'}</span><strong>{selectedIds.length}</strong></div>
-        {!connection.connected && <div className="hr-docusign-warning"><CircleAlert/><p><strong>{isEn ? 'Connect DocuSign before creating an envelope' : 'Conecta DocuSign antes de crear un sobre'}</strong><span>{isEn ? 'The server needs the DocuSign account ID and OAuth access token. Credentials remain server-side.' : 'El servidor necesita el ID de la cuenta y el access token OAuth de DocuSign. Las credenciales permanecen en el servidor.'}</span></p></div>}
+        {!workflowReady && <div className="hr-docusign-warning"><CircleAlert/><p><strong>{isEn ? 'Complete the secure DocuSign workflow before creating an envelope' : 'Completa el flujo seguro de DocuSign antes de crear un sobre'}</strong><span>{connection.connected?(isEn?'Configure the DocuSign Connect callback URL and HMAC secret so every completed PDF returns to the correct employee record.':'Configura la URL de callback de DocuSign Connect y el secreto HMAC para que cada PDF completado regrese al expediente correcto.'):(isEn?'The server needs the DocuSign account ID, OAuth access token, Connect callback URL and HMAC secret.':'El servidor necesita el account ID, access token OAuth, URL de callback de Connect y secreto HMAC de DocuSign.')}</span></p></div>}
         {error && <p className="hr-package-error">{error}</p>}
-        {envelope && <div className="hr-docusign-success"><Check/><div><strong>{isEn ? 'Draft created in DocuSign' : 'Borrador creado en DocuSign'}</strong><span>{envelope.envelopeId}</span><small>{isEn ? 'Open DocuSign to place signature fields and send it.' : 'Abre DocuSign para colocar los campos de firma y enviarlo.'}</small></div></div>}
-        <button type="submit" disabled={!connection.connected || busy}><PenTool/>{busy ? (isEn ? 'Creating envelope…' : 'Creando sobre…') : (isEn ? 'Create DocuSign draft' : 'Crear borrador en DocuSign')}</button>
+        {envelope && <div className="hr-docusign-success"><Check/><div><strong>{isEn ? 'Draft linked to the employee record' : 'Borrador vinculado al expediente del empleado'}</strong><span>{envelope.envelopeId}</span><small>{isEn ? 'Place the signature fields and send it. When DocuSign reports completion, the signed PDF will be archived automatically.' : 'Coloca los campos de firma y envíalo. Cuando DocuSign reporte la finalización, el PDF firmado se archivará automáticamente.'}</small></div></div>}
+        <button type="submit" disabled={!workflowReady || busy}><PenTool/>{busy ? (isEn ? 'Creating envelope…' : 'Creando sobre…') : (isEn ? 'Create tracked DocuSign draft' : 'Crear borrador DocuSign rastreado')}</button>
         <a className="hr-open-docusign" href={docusignUrl} target="_blank" rel="noreferrer"><ExternalLink/>{isEn ? 'Open DocuSign' : 'Abrir DocuSign'}</a>
         <p className="hr-docusign-flow"><Clock3/>{isEn ? 'Draft first: position signature fields in DocuSign, review the recipient, then send.' : 'Primero borrador: coloca los campos de firma en DocuSign, revisa el destinatario y luego envía.'}</p>
       </form>
@@ -263,7 +299,42 @@ function DocuSignWorkspace({ employees, lang }) {
   </div>;
 }
 
-function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus, onStatusChange }) {
+function AcademyDossier({academy,lang}){
+  const isEn=lang==='en';const record=academy?.record||{};const answers=(record.events||[]).filter(event=>event.type==='answer').slice().reverse();const certificates=record.certificates||[];
+  return <section className="hr-academy-dossier" data-search-entry><header><BadgeCheck/><div><span>EASTERN MEDICAL ACADEMY</span><h2>{isEn?'Learning record and certifications':'Expediente de aprendizaje y certificaciones'}</h2><p>{isEn?'Results are linked automatically to this employee identity.':'Los resultados se enlazan automáticamente con la identidad de este empleado.'}</p></div></header><div className="hr-academy-metrics"><div><strong>{Number(record.completedCourses||0)}</strong><span>{isEn?'Courses completed':'Cursos completados'}</span></div><div><strong>{Number(record.completedLessons||0)}</strong><span>{isEn?'Lessons completed':'Lecciones completadas'}</span></div><div><strong>{Number(record.answerCount||0)}</strong><span>{isEn?'Answers recorded':'Respuestas registradas'}</span></div><div><strong>{certificates.length}</strong><span>{isEn?'Certificates':'Certificados'}</span></div></div>{certificates.length?<div className="hr-certificate-list">{certificates.map(certificate=><article key={certificate.certificateId}><BadgeCheck/><div><strong>{certificate.courseTitle||certificate.courseId}</strong><span>{certificate.certificateId}</span><small>{new Date(certificate.completedAt||certificate.createdAt).toLocaleDateString(isEn?'en-US':'es-US')}</small></div></article>)}</div>:<p className="hr-dossier-empty"><CircleAlert/>{isEn?'No Academy certificate has been issued yet.':'Todavía no se ha emitido ningún certificado de Academy.'}</p>}{answers.length>0&&<details className="hr-answer-history"><summary>{isEn?'View recorded questions and answers':'Ver preguntas y respuestas registradas'}<ChevronDown/></summary><div>{answers.map(answer=><article key={answer.id}><div><strong>{answer.question||answer.lessonTitle||answer.courseTitle}</strong><span>{answer.courseTitle} · {answer.lessonTitle}</span></div><b className={answer.correct?'correct':'incorrect'}>{answer.selectedAnswer||String(answer.selectedIndex??'—')}</b></article>)}</div></details>}</section>;
+}
+
+function EmployeeRequiredRecords({employee,lang,canManage,onRefresh}){
+  const isEn=lang==='en';const dossier=employee.hrDossier||{};const saved=Object.fromEntries((dossier.compliance||[]).map(item=>[item.key,item]));const documents=dossier.documents||[];const [busyKey,setBusyKey]=useState('');
+  const eVerifyDeadline=()=>{const start=employee.hireDate||employee.startDate;if(!start)return '';const date=new Date(`${start}T12:00:00`);if(Number.isNaN(date.valueOf()))return '';let added=0;while(added<3){date.setDate(date.getDate()+1);if(date.getDay()!==0&&date.getDay()!==6)added+=1}return date.toISOString().slice(0,10)};
+  const sourceRecords={
+    'background-screening':dossier.aca?.background||[],
+    'aca-roster':dossier.aca?.roster||[],
+    'e-verify':[],
+  };
+  const definitions=[
+    {key:'background-screening',icon:ShieldCheck,title:'Background Screening',description:isEn?'Florida screening status, verification date, expiration and supporting evidence.':'Estatus del screening de Florida, fecha de verificación, vencimiento y evidencia.',source:'https://flhealthsource.gov/background-screening/'},
+    {key:'aca-roster',icon:Users,title:'ACA Roster',description:isEn?'Employee roster inclusion, assigned facility, status and latest authorized verification.':'Inclusión del empleado en el roster, sede asignada, estatus y última verificación autorizada.',source:''},
+    {key:'e-verify',icon:BadgeCheck,title:'E-Verify',description:isEn?'Employment-authorization case after Form I-9, including case number, result and closure evidence.':'Caso de autorización laboral posterior al Form I-9, incluyendo número de caso, resultado y evidencia de cierre.',source:'https://www.e-verify.gov/node/2768'},
+  ];
+  const update=async(definition,status,deadline)=>{if(!employee.accessUserId)return;setBusyKey(definition.key);try{const response=await fetch(`/api/hr/employees/${encodeURIComponent(employee.accessUserId)}/compliance/${encodeURIComponent(definition.key)}`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({status,deadline})});if(!response.ok)throw new Error();await onRefresh?.()}finally{setBusyKey('')}};
+  return <section className="hr-required-records" data-search-entry><header><FileCheck2/><div><span>{isEn?'MANDATORY EMPLOYEE CONTROLS':'CONTROLES OBLIGATORIOS DEL EMPLEADO'}</span><h2>{isEn?'Background, ACA roster and E-Verify':'Background Screening, ACA Roster y E-Verify'}</h2><p>{isEn?'These controls remain visible in every employee record and retain their own evidence and deadline.':'Estos controles permanecen visibles en cada expediente y conservan su propia evidencia y deadline.'}</p></div></header><div className="hr-required-record-grid">{definitions.map(definition=>{const records=sourceRecords[definition.key];const evidence=documents.filter(document=>document.category===definition.key);const stored=saved[definition.key];const sourceReady=records.some(record=>/active|eligible|approved|clear|complete|current|authorized/i.test(record.status||''));const status=stored?.status||(sourceReady?'completed':records.length?'in-progress':'pending');const deadline=stored?.deadline||records.find(record=>record.expiresOn)?.expiresOn||(definition.key==='e-verify'?eVerifyDeadline():suggestedDeadline(employee,30));const Icon=definition.icon;return <article key={definition.key} className={status}><div className="hr-required-record-heading"><span><Icon/></span><div><h3>{definition.title}</h3><p>{definition.description}</p></div><b>{status==='completed'?(isEn?'Completed':'Completado'):status==='in-progress'?(isEn?'In progress':'En progreso'):(isEn?'Pending':'Pendiente')}</b></div><div className="hr-required-record-facts"><span>{isEn?'Matched records':'Registros vinculados'}<strong>{records.length}</strong></span><span>{isEn?'Evidence files':'Archivos de evidencia'}<strong>{evidence.length}</strong></span><span>Deadline<strong>{deadline||(isEn?'Hire date required':'Requiere fecha de contratación')}</strong></span></div>{records.slice(0,2).map(record=><div className="hr-required-source-record" key={record.id}><strong>{record.subject}</strong><span>{record.facility|| (isEn?'Facility pending':'Sede pendiente')} · {record.status|| (isEn?'Status pending':'Estatus pendiente')}</span><small>{record.lastVerifiedAt||record.syncedAt}</small></div>)}{evidence.length>0&&<div className="hr-required-evidence">{evidence.map(document=><a key={document.id} href={document.fileUrl} target="_blank" rel="noreferrer"><FileText/>{document.filename}<ExternalLink/></a>)}</div>}{canManage&&employee.accessUserId&&<div className="hr-required-controls"><select value={status} disabled={busyKey===definition.key} onChange={event=>update(definition,event.target.value,deadline)}><option value="pending">{isEn?'Pending':'Pendiente'}</option><option value="in-progress">{isEn?'In progress':'En progreso'}</option><option value="completed">{isEn?'Completed':'Completado'}</option><option value="not-applicable">{isEn?'Not applicable':'No aplica'}</option></select><input aria-label={`Deadline ${definition.title}`} type="date" defaultValue={deadline} onBlur={event=>event.target.value&&event.target.value!==deadline&&update(definition,status,event.target.value)}/></div>}{definition.source&&<a className="hr-required-official" href={definition.source} target="_blank" rel="noreferrer">{isEn?'Official guidance':'Guía oficial'}<ExternalLink/></a>}</article>})}</div></section>;
+}
+
+function EmployeeWorkflowDocuments({employee,lang,canManage,selfService,onRefresh}){
+  const isEn=lang==='en';const dossier=employee.hrDossier||{};const requests=dossier.requests||[];const documents=dossier.documents||[];const [title,setTitle]=useState('');const [category,setCategory]=useState('signed-document');const [dueAt,setDueAt]=useState('');const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');
+  const createRequest=async event=>{event.preventDefault();if(!employee.accessUserId||!title.trim())return;setBusy(true);setMessage('');try{const response=await fetch(`/api/hr/employees/${encodeURIComponent(employee.accessUserId)}/document-requests`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title,category,dueAt})});if(!response.ok)throw new Error((await response.json()).error);setTitle('');setDueAt('');setMessage(isEn?'Document request created.':'Solicitud de documento creada.');await onRefresh?.()}catch(error){setMessage(error.message)}finally{setBusy(false)}};
+  const upload=async(event,request=null)=>{const file=event.target.files?.[0];if(!file)return;setBusy(true);setMessage('');try{const response=await fetch('/api/hr/me/documents',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({requestId:request?.id||'',category:request?.category||category,filename:file.name,type:file.type,base64:await blobBase64(file)})});if(!response.ok)throw new Error((await response.json()).error);setMessage(isEn?'Document received and archived in your Human Resources record.':'Documento recibido y archivado en tu expediente de Recursos Humanos.');await onRefresh?.()}catch(error){setMessage(error.message)}finally{setBusy(false);event.target.value=''}};
+  return <section className="hr-workflow-documents" data-search-entry><header><FileCheck2/><div><span>{isEn?'DOCUMENT WORKFLOW':'FLUJO DOCUMENTAL'}</span><h2>{isEn?'Requested and returned documents':'Documentos solicitados y devueltos'}</h2><p>{isEn?'Every returned file is archived under this employee identity.':'Cada archivo devuelto queda archivado bajo la identidad de este empleado.'}</p></div></header>{canManage&&employee.accessUserId&&<form className="hr-request-form" onSubmit={createRequest}><label>{isEn?'Document needed':'Documento requerido'}<input value={title} onChange={event=>setTitle(event.target.value)} placeholder={isEn?'Example: Updated medical license':'Ejemplo: Licencia médica actualizada'} required/></label><label>{isEn?'Category':'Categoría'}<select value={category} onChange={event=>setCategory(event.target.value)}><option value="employee-package">Employee Package</option><option value="certification">{isEn?'Certification':'Certificación'}</option><option value="background-screening">Background Screening</option><option value="aca-roster">ACA Roster</option><option value="e-verify">E-Verify</option><option value="medical-exam">{isEn?'Medical exam':'Examen médico'}</option><option value="signed-document">{isEn?'Signed document':'Documento firmado'}</option><option value="credential">{isEn?'Credential / license':'Credencial / licencia'}</option><option value="course">{isEn?'Course evidence':'Evidencia de curso'}</option><option value="other">{isEn?'Other':'Otro'}</option></select></label><label>Deadline<input type="date" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label><button disabled={busy}><Send/>{isEn?'Request':'Solicitar'}</button></form>}{requests.length?<div className="hr-request-list">{requests.map(request=><article key={request.id}><span className={`hr-request-status ${request.status}`}>{request.status==='received'?<Check/>:<Clock3/>}{request.status}</span><div><strong>{request.title}</strong><small>{request.category}{request.deliveryMethod?` · ${request.deliveryMethod}`:''}{request.dueAt?` · Deadline ${request.dueAt}`:''}</small></div>{selfService&&request.packageId&&<a className="hr-assigned-document" href={`/api/hr/me/document-requests/${encodeURIComponent(request.id)}/template`} target="_blank" rel="noreferrer"><FileText/>{isEn?'Open assigned document':'Abrir documento asignado'}</a>}{selfService&&request.status!=='received'&&<label><Upload/>{isEn?'Return completed document':'Devolver documento completado'}<input type="file" onChange={event=>upload(event,request)} disabled={busy}/></label>}</article>)}</div>:<p className="hr-dossier-empty"><CircleAlert/>{isEn?'No documents have been requested yet.':'Todavía no se han solicitado documentos.'}</p>}{selfService&&<div className="hr-unsolicited-upload"><div><strong>{isEn?'Add another document to my record':'Añadir otro documento a mi expediente'}</strong><span>{isEn?'Certifications, licenses, medical exams or signed forms.':'Certificaciones, licencias, exámenes médicos o formularios firmados.'}</span></div><label><Upload/>{isEn?'Choose file':'Elegir archivo'}<input type="file" onChange={event=>upload(event)} disabled={busy}/></label></div>}{documents.length>0&&<div className="hr-returned-list">{documents.map(document=><a key={document.id} href={document.fileUrl} target="_blank" rel="noreferrer"><FileText/><div><strong>{document.filename}</strong><span>{document.category} · {new Date(document.createdAt).toLocaleDateString(isEn?'en-US':'es-US')}</span></div><ExternalLink/></a>)}</div>}{message&&<p className="hr-document-message">{message}</p>}</section>;
+}
+
+function ClinicalCompliance({employee,lang,canManage,onRefresh}){
+  const isEn=lang==='en';const doctor=isDoctorEmployee(employee);const saved=Object.fromEntries((employee.hrDossier?.compliance||[]).map(item=>[item.key,item]));const requirements=doctor?doctorRequirements(employee,isEn):clinicalStaffRequirements(employee,isEn);const [busyKey,setBusyKey]=useState('');
+  const update=async(requirement,status,deadline)=>{if(!employee.accessUserId)return;setBusyKey(requirement.key);try{const response=await fetch(`/api/hr/employees/${encodeURIComponent(employee.accessUserId)}/compliance/${encodeURIComponent(requirement.key)}`,{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({status,deadline})});if(!response.ok)throw new Error();await onRefresh?.()}finally{setBusyKey('')}};
+  return <section className="hr-clinical-compliance" data-search-entry><header><ShieldCheck/><div><span>{isEn?'CLINICAL CREDENTIAL READINESS':'PREPARACIÓN DE CREDENCIALES CLÍNICAS'}</span><h2>{doctor?(isEn?'Physician requirements checklist':'Checklist de requisitos del médico'):(isEn?'Clinical personnel requirements checklist':'Checklist de requisitos del personal clínico')}</h2><p>{isEn?'“Conditional” means the requirement depends on duties, payer participation or services. Deadlines shown without a source date are internal follow-up deadlines.':'“Condicional” significa que depende de funciones, pagadores o servicios. Los deadlines sin fecha fuente son fechas internas de seguimiento.'}</p></div></header><div className="hr-compliance-list">{requirements.map(requirement=>{const stored=saved[requirement.key];const status=stored?.status||(requirement.auto?'completed':'pending');const deadline=stored?.deadline||suggestedDeadline(employee,requirement.key==='oig-leie'?30:45);return <article key={requirement.key} className={status}><span className="hr-compliance-check">{status==='completed'?<Check/>:<Clock3/>}</span><div><strong>{requirement.title}</strong><p>{requirement.detail}</p><small>{requirement.required}</small>{requirement.source&&<a href={requirement.source} target="_blank" rel="noreferrer">{isEn?'Official source':'Fuente oficial'}<ExternalLink/></a>}</div><aside><b>{status==='completed'?(isEn?'Completed':'Completado'):status==='not-applicable'?(isEn?'Not applicable':'No aplica'):status==='in-progress'?(isEn?'In progress':'En progreso'):(isEn?'Pending':'Pendiente')}</b><span>Deadline: {deadline}</span>{canManage&&employee.accessUserId&&<div><select value={status} disabled={busyKey===requirement.key} onChange={event=>update(requirement,event.target.value,deadline)}><option value="pending">{isEn?'Pending':'Pendiente'}</option><option value="in-progress">{isEn?'In progress':'En progreso'}</option><option value="completed">{isEn?'Completed':'Completado'}</option><option value="not-applicable">{isEn?'Not applicable':'No aplica'}</option></select><input aria-label={`Deadline ${requirement.title}`} type="date" defaultValue={deadline} onBlur={event=>event.target.value&&event.target.value!==deadline&&update(requirement,status,event.target.value)}/></div>}</aside></article>})}</div></section>;
+}
+
+function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus, onStatusChange, canManage=false, selfService=false, onDossierRefresh }) {
   const isEn = lang === 'en';
   const files = classifyFiles(employee);
   const completion = completeness(employee, files);
@@ -273,7 +344,7 @@ function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus
     ['Medicare', 'Medicare', employee.medicare], ['Medicaid', 'Medicaid', employee.medicaid],
   ];
   return <div className="hr-record-page">
-    <div className="hr-record-top"><button onClick={onBack}><ArrowLeft/>{isEn ? 'Back to Human Resources' : 'Volver a Recursos Humanos'}</button><span><ShieldCheck/> {employee.source || 'Human Resources'}</span></div>
+    <div className="hr-record-top">{onBack&&<button onClick={onBack}><ArrowLeft/>{isEn ? 'Back to Human Resources' : 'Volver a Recursos Humanos'}</button>}<span><ShieldCheck/> {employee.source || 'Human Resources'}</span></div>
     <div className="hr-record-shell">
       <section className="hr-record-hero">
         <div className="hr-record-avatar">{employee.initials || employee.name?.split(' ').map(part => part[0]).slice(0, 2).join('')}</div>
@@ -291,6 +362,10 @@ function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus
           <FileList title="Employee package" subtitle={isEn ? 'Employment agreements, résumé, onboarding and Human Resources file.' : 'Acuerdos laborales, résumé, onboarding y expediente de Recursos Humanos.'} files={files.package} icon={BriefcaseBusiness} lang={lang}/>
           <FileList title={isEn ? 'Signed documents' : 'Documentos firmados'} subtitle={isEn ? 'Agreements, acknowledgements, consents and signed forms.' : 'Acuerdos, acuses, consentimientos y formularios firmados.'} files={files.signed} icon={FileCheck2} lang={lang}/>
           <FileList title={isEn ? 'Attachments' : 'Adjuntos'} subtitle={isEn ? 'Every source attachment connected to this employee.' : 'Todos los adjuntos de origen conectados a este empleado.'} files={files.all} icon={Paperclip} lang={lang}/>
+          <AcademyDossier academy={employee.hrDossier?.academy} lang={lang}/>
+          <EmployeeRequiredRecords employee={employee} lang={lang} canManage={canManage} onRefresh={onDossierRefresh}/>
+          {isClinicalEmployee(employee)&&<ClinicalCompliance employee={employee} lang={lang} canManage={canManage} onRefresh={onDossierRefresh}/>}
+          <EmployeeWorkflowDocuments employee={employee} lang={lang} canManage={canManage} selfService={selfService} onRefresh={onDossierRefresh}/>
         </main>
         <aside>
           <section className="hr-checklist-card"><header><BadgeCheck/><div><h3>{isEn ? 'Employee package checklist' : 'Checklist del employee package'}</h3><p>{isEn ? 'Current source readiness' : 'Disponibilidad en la fuente actual'}</p></div></header>{[
@@ -303,7 +378,7 @@ function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus
             [isEn ? 'Source attachments' : 'Adjuntos de origen', files.all.length],
           ].map(([label, ready]) => <div key={label}><span>{label}</span><Status ready={!!ready} lang={lang}/></div>)}</section>
           <section className="hr-credential-card"><header><IdCard/><div><h3>{isEn ? 'Licenses & credentials' : 'Licencias y credenciales'}</h3><p>{isEn ? 'Identifiers currently mapped' : 'Identificadores actualmente mapeados'}</p></div></header>{credentials.map(([en, es, value]) => <div key={en}><span>{isEn ? en : es}</span><strong>{value || (isEn ? 'Pending from source' : 'Pendiente de fuente')}</strong></div>)}{files.license.length > 0 && <div className="hr-license-files"><small>{isEn ? 'CONNECTED FILES' : 'ARCHIVOS CONECTADOS'}</small>{files.license.map((file, index) => <span key={`${file.filename}-${index}`}><Paperclip/>{file.filename}</span>)}</div>}</section>
-          <section className="hr-dates-card"><header><BadgeCheck/><div><h3>{isEn ? 'Dates & record status' : 'Fechas y estatus del expediente'}</h3><p>{isEn ? 'Effective dates shown only when exposed by the source' : 'Fechas mostradas únicamente cuando la fuente las expone'}</p></div></header><div className="hr-manual-status"><span>{isEn?'Employment status':'Estado laboral'}<small>{isEn?'Manual app setting':'Configuración manual en la app'}</small></span><button className={employmentStatus} onClick={() => onStatusChange(employmentStatus === 'active' ? 'inactive' : 'active')}><span>{employmentStatus === 'active' ? (isEn?'Active':'Activo') : (isEn?'Inactive':'Inactivo')}</span>{employmentStatus === 'active' ? (isEn?'Mark inactive':'Marcar inactivo') : (isEn?'Mark active':'Marcar activo')}</button></div><div><span>{isEn?'Hire / effective date':'Fecha de contratación / vigencia'}</span><strong>{employee.hireDate||employee.startDate||(isEn?'Pending from source':'Pendiente de fuente')}</strong></div><div><span>{isEn?'Credential expiration':'Vencimiento de credencial'}</span><strong>{employee.expiresOn||employee.expirationDate||(isEn?'Pending from source':'Pendiente de fuente')}</strong></div><div><span>{isEn?'Last protected synchronization':'Última sincronización protegida'}</span><strong>{sourceStatus?.syncedAt||(isEn?'Pending protected sync':'Sincronización protegida pendiente')}</strong></div></section>
+          <section className="hr-dates-card"><header><BadgeCheck/><div><h3>{isEn ? 'Dates & record status' : 'Fechas y estatus del expediente'}</h3><p>{isEn ? 'Effective dates shown only when exposed by the source' : 'Fechas mostradas únicamente cuando la fuente las expone'}</p></div></header><div className="hr-manual-status"><span>{isEn?'Employment status':'Estado laboral'}<small>{isEn?'Human Resources controlled':'Controlado por Recursos Humanos'}</small></span>{canManage?<button className={employmentStatus} onClick={() => onStatusChange(employmentStatus === 'active' ? 'inactive' : 'active')}><span>{employmentStatus === 'active' ? (isEn?'Active':'Activo') : (isEn?'Inactive':'Inactivo')}</span>{employmentStatus === 'active' ? (isEn?'Mark inactive':'Marcar inactivo') : (isEn?'Mark active':'Marcar activo')}</button>:<strong>{employmentStatus==='active'?(isEn?'Active':'Activo'):(isEn?'Inactive':'Inactivo')}</strong>}</div><div><span>{isEn?'Hire / effective date':'Fecha de contratación / vigencia'}</span><strong>{employee.hireDate||employee.startDate||(isEn?'Pending from source':'Pendiente de fuente')}</strong></div><div><span>{isEn?'Credential expiration':'Vencimiento de credencial'}</span><strong>{employee.expiresOn||employee.expirationDate||(isEn?'Pending from source':'Pendiente de fuente')}</strong></div><div><span>{isEn?'Last protected synchronization':'Última sincronización protegida'}</span><strong>{sourceStatus?.syncedAt||(isEn?'Pending protected sync':'Sincronización protegida pendiente')}</strong></div></section>
           {employee.sourceRecordUrl && <a className="hr-source-link" href={employee.sourceRecordUrl} target="_blank" rel="noreferrer"><Link2/>{isEn ? 'Open source record' : 'Abrir registro de origen'}<ArrowRight/></a>}
         </aside>
       </div>
@@ -311,36 +386,55 @@ function EmployeeRecord({ employee, lang, sourceStatus, onBack, employmentStatus
   </div>;
 }
 
-export default function HumanResources({ lang, employees = [], sourceStatus }) {
+export default function HumanResources({ lang, employees:sourceEmployees = [], sourceStatus, session, canManage=false }) {
   const isEn = lang === 'en';
   const [query, setQuery] = useState('');
   const [position, setPosition] = useState('all');
   const [selected, setSelected] = useState(null);
   const [section, setSection] = useState('employees');
+  const [workforce,setWorkforce]=useState('operational');
+  const [dossiers,setDossiers]=useState([]);
+  const [loadingDossiers,setLoadingDossiers]=useState(true);
+  const [dossierError,setDossierError]=useState('');
   const [statusOverrides, setStatusOverrides] = useState(() => {
     try { return JSON.parse(localStorage.getItem('operational-hub-employee-status') || '{}'); } catch { return {}; }
   });
-  const employeeKey = employee => employee.recordId || employee.name;
+  const employeeKey = employee => employee.accessUserId || employee.recordId || employee.name;
+  const loadDossiers=async()=>{setLoadingDossiers(true);setDossierError('');try{const response=await fetch(canManage?'/api/hr/dossiers':'/api/hr/me/dossier');const payload=await response.json();if(!response.ok)throw new Error(payload.error);setDossiers(canManage?(payload.dossiers||[]):payload.dossier?[payload.dossier]:[])}catch(error){setDossierError(error.message|| (isEn?'The employee record could not be loaded.':'No se pudo cargar el expediente.'))}finally{setLoadingDossiers(false)}};
+  useEffect(()=>{loadDossiers()},[session?.id,canManage,isEn]);
+  const employees=useMemo(()=>{
+    const byEmail=new Map(dossiers.map(dossier=>[String(dossier.user?.email||'').toLowerCase(),dossier]));const matched=new Set();
+    const roster=sourceEmployees.map(employee=>{const dossier=byEmail.get(String(employee.email||'').toLowerCase());if(dossier)matched.add(dossier.user.id);return {...employee,...(dossier?{name:dossier.user.name||employee.name,email:dossier.user.email||employee.email,accessUserId:dossier.user.id,hrDossier:dossier}: {})}});
+    const accountOnly=dossiers.filter(dossier=>!matched.has(dossier.user.id)).map(dossier=>({...dossier.provider,recordId:dossier.provider?.recordId||`access-${dossier.user.id}`,accessUserId:dossier.user.id,name:dossier.user.name,email:dossier.user.email,initials:dossier.provider?.initials||String(dossier.user.name||'').split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase(),role:dossier.provider?.role||(isEn?'Operational employee':'Personal operacional'),entity:dossier.provider?.entity||(isEn?'Entity pending':'Entidad pendiente'),degree:dossier.provider?.degree||'',lifecycle:dossier.user.employmentStatus==='inactive'?'inactive':'active',status:dossier.user.employmentStatus,sourceAttachments:dossier.provider?.sourceAttachments||[],source:dossier.provider?.source||'Operational Hub · Identity',hrDossier:dossier}));
+    if(!canManage&&dossiers[0]){const own=[...roster,...accountOnly].find(employee=>employee.accessUserId===dossiers[0].user.id);return own?[own]:accountOnly}
+    return [...roster,...accountOnly];
+  },[sourceEmployees,dossiers,canManage,isEn]);
+  useEffect(()=>{if(!selected)return;const refreshed=employees.find(employee=>employeeKey(employee)===employeeKey(selected));if(refreshed&&refreshed!==selected)setSelected(refreshed)},[employees]);
   const getStatus = employee => statusOverrides[employeeKey(employee)] || (employee.lifecycle === 'inactive' ? 'inactive' : 'active');
   const setEmployeeStatus = (employee, status) => {
     const next = { ...statusOverrides, [employeeKey(employee)]: status };
     setStatusOverrides(next);
     localStorage.setItem('operational-hub-employee-status', JSON.stringify(next));
   };
-  const positions = useMemo(() => [...new Set(employees.map(employee => employee.role).filter(Boolean))].sort(), [employees]);
-  const filtered = useMemo(() => employees.filter(employee => {
+  const workforceEmployees=useMemo(()=>employees.filter(employee=>workforce==='clinical'?isClinicalEmployee(employee):!isClinicalEmployee(employee)),[employees,workforce]);
+  const positions = useMemo(() => [...new Set(workforceEmployees.map(employee => employee.role).filter(Boolean))].sort(), [workforceEmployees]);
+  const filtered = useMemo(() => workforceEmployees.filter(employee => {
     const matchesPosition = position === 'all' || employee.role === position;
     const haystack = [employee.name, employee.role, employee.entity, employee.degree].filter(Boolean).join(' ').toLowerCase();
     return matchesPosition && haystack.includes(query.trim().toLowerCase());
-  }), [employees, position, query]);
+  }), [workforceEmployees, position, query]);
   const groups = useMemo(() => Object.entries(filtered.reduce((acc, employee) => { const key = employee.role || (isEn ? 'Position pending' : 'Puesto pendiente'); (acc[key] ||= []).push(employee); return acc; }, {})).sort(([a], [b]) => a.localeCompare(b)), [filtered, isEn]);
-  if (selected) return <EmployeeRecord employee={selected} lang={lang} sourceStatus={sourceStatus} onBack={() => setSelected(null)} employmentStatus={getStatus(selected)} onStatusChange={status => setEmployeeStatus(selected, status)}/>;
+  if(loadingDossiers)return <div className="page hr-page"><div className="hr-no-results"><Clock3/><h2>{isEn?'Loading your protected employee record…':'Cargando tu expediente protegido…'}</h2></div></div>;
+  if(!canManage){const employee=employees[0];if(!employee)return <div className="page hr-page"><div className="hr-no-results"><CircleAlert/><h2>{isEn?'Your employee record is not available':'Tu expediente laboral no está disponible'}</h2><p>{dossierError}</p></div></div>;return <EmployeeRecord employee={employee} lang={lang} sourceStatus={sourceStatus} employmentStatus={getStatus(employee)} onStatusChange={()=>{}} canManage={false} selfService onDossierRefresh={loadDossiers}/>}
+  if (selected) return <EmployeeRecord employee={selected} lang={lang} sourceStatus={sourceStatus} onBack={() => setSelected(null)} employmentStatus={getStatus(selected)} onStatusChange={status => setEmployeeStatus(selected, status)} canManage onDossierRefresh={loadDossiers}/>;
   const attached = employees.reduce((total, employee) => total + (employee.sourceAttachments?.length || 0), 0);
   return <div className="page hr-page">
     <div className="page-title hr-title"><div><span className="eyebrow">{isEn ? 'HUMAN RESOURCES · EMPLOYEE RECORDS' : 'RECURSOS HUMANOS · EXPEDIENTES'}</span><h1>{isEn?'Human Resources':'Recursos Humanos'}</h1><p>{isEn ? 'Employees organized by position with their complete Human Resources record, employee package, licenses and signed documents.' : 'Empleados organizados por posición con su expediente de Recursos Humanos, employee package, licencias y documentos firmados.'}</p></div><span className="hr-source-badge"><ShieldCheck/><strong>{sourceStatus?.source || 'EM-MSO · Human Resource'}</strong><small>{sourceStatus?.state==='connected'?(isEn?'Protected sync active':'Sincronización protegida activa'):(isEn?'Human Resource permission pending':'Permiso de Human Resource pendiente')}</small></span></div>
-    <div className="hr-metrics"><div><Users/><strong>{employees.length}</strong><span>{isEn ? 'Employee records' : 'Expedientes'}</span></div><div><BriefcaseBusiness/><strong>{positions.length}</strong><span>{isEn ? 'Positions' : 'Posiciones'}</span></div><div><Paperclip/><strong>{attached}</strong><span>{isEn ? 'Connected files' : 'Archivos conectados'}</span></div></div>
+    {dossierError&&<p className="hr-document-message">{dossierError}</p>}
+    <div className="hr-metrics"><div><Users/><strong>{employees.length}</strong><span>{isEn ? 'Employee records' : 'Expedientes'}</span></div><div><BriefcaseBusiness/><strong>{positions.length}</strong><span>{isEn ? 'Positions in current group' : 'Posiciones del grupo actual'}</span></div><div><Paperclip/><strong>{attached}</strong><span>{isEn ? 'Connected files' : 'Archivos conectados'}</span></div></div>
     <nav className="hr-section-tabs"><button className={section === 'employees' ? 'active' : ''} onClick={() => setSection('employees')}><Users/>{isEn ? 'Employees' : 'Empleados'}</button><button className={section === 'files' ? 'active' : ''} onClick={() => setSection('files')}><FolderOpen/>{isEn ? 'Files' : 'Archivos'}</button><button className={section === 'package' ? 'active' : ''} onClick={() => setSection('package')}><FileCheck2/>Employee Package</button><button className={section === 'docusign' ? 'active' : ''} onClick={() => setSection('docusign')}><PenTool/>DocuSign</button></nav>
     {section === 'docusign' ? <DocuSignWorkspace employees={employees} lang={lang}/> : section === 'package' ? <EmployeePackageLibrary employees={employees} lang={lang}/> : section === 'files' ? <HumanResourcesFiles employees={employees} lang={lang}/> : <>
+    <nav className="hr-workforce-tabs"><button className={workforce==='operational'?'active':''} onClick={()=>{setWorkforce('operational');setPosition('all')}}><BriefcaseBusiness/><span><strong>{isEn?'Operational personnel':'Personal operacional'}</strong><small>{employees.filter(employee=>!isClinicalEmployee(employee)).length} {isEn?'employees':'empleados'}</small></span></button><button className={workforce==='clinical'?'active':''} onClick={()=>{setWorkforce('clinical');setPosition('all')}}><IdCard/><span><strong>{isEn?'Clinical personnel':'Personal clínico'}</strong><small>{employees.filter(isClinicalEmployee).length} {isEn?'employees':'empleados'}</small></span></button></nav>
     <div className="hr-toolbar"><label><Search/><input value={query} onChange={event => setQuery(event.target.value)} placeholder={isEn ? 'Search employee, position or entity…' : 'Buscar empleado, posición o entidad…'}/></label><label className="hr-position-select"><BriefcaseBusiness/><select value={position} onChange={event => setPosition(event.target.value)}><option value="all">{isEn ? 'All positions' : 'Todas las posiciones'}</option>{positions.map(item => <option key={item} value={item}>{item}</option>)}</select><ChevronDown/></label></div>
     <div className="hr-position-groups">{groups.map(([role, members]) => <section key={role}><header><div><span>{isEn ? 'POSITION' : 'POSICIÓN'}</span><h2>{role}</h2></div><b>{members.length} {members.length === 1 ? (isEn ? 'employee' : 'empleado') : (isEn ? 'employees' : 'empleados')}</b></header><div>{members.map(employee => { const files = classifyFiles(employee); const percent = completeness(employee, files); const employmentStatus = getStatus(employee); return <article className="hr-directory-row" key={employeeKey(employee)}><button className="hr-directory-open" onClick={() => setSelected(employee)}><span className="hr-directory-avatar">{employee.initials}</span><div className="hr-directory-person"><strong>{employee.name}</strong><span>{employee.entity || (isEn ? 'Entity pending' : 'Entidad pendiente')} · {employee.degree || employee.license || (isEn ? 'Credential pending' : 'Credencial pendiente')}</span></div><div className="hr-directory-files"><Paperclip/><strong>{files.all.length}</strong><span>{isEn ? 'files' : 'archivos'}</span></div><div className="hr-directory-progress"><strong>{percent}%</strong><div><i style={{ width: `${percent}%` }}/></div></div><ChevronRight/></button><button className={`hr-status-button ${employmentStatus}`} onClick={() => setEmployeeStatus(employee, employmentStatus === 'active' ? 'inactive' : 'active')}><span>{employmentStatus === 'active' ? (isEn ? 'Active' : 'Activo') : (isEn ? 'Inactive' : 'Inactivo')}</span>{employmentStatus === 'active' ? (isEn ? 'Mark inactive' : 'Marcar inactivo') : (isEn ? 'Mark active' : 'Marcar activo')}</button></article>})}</div></section>)}{!groups.length && <div className="hr-no-results"><UserRound/><h2>{isEn ? 'No employees match these filters' : 'Ningún empleado coincide con los filtros'}</h2><p>{isEn ? 'Adjust the search or position filter.' : 'Ajusta la búsqueda o el filtro de posición.'}</p></div>}</div>
     </>}

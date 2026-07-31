@@ -6,6 +6,8 @@ const DEFAULT_MODEL = 'gpt-5.6-sol';
 const DEFAULT_REASONING = 'high';
 const MAX_TOOL_ROUNDS = 6;
 const VALID_REASONING = new Set(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
+const permissionRank = { none:0, view:1, manage:2 };
+const operationalKeys = ['dashboard','contracting','licenses','doctor-licenses','human-resources','entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research'];
 
 const model = () => process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
 const apiKey = () => process.env.OPENAI_API_KEY?.trim() || process.env.AI_INTEGRATIONS_OPENAI_API_KEY?.trim() || '';
@@ -32,7 +34,15 @@ async function probeConnection() {
   }
 }
 
-export async function getAiEngineStatus() {
+const permissionLevel = (session,key) => {
+  if (!session) return 'none';
+  if (session.role === 'owner' || session.role === 'admin' || session.scope === 'full') return 'manage';
+  const value=session.permissions?.[key]||(key==='human-resources'?session.permissions?.personnel:null);
+  return Object.hasOwn(permissionRank,value)?value:'none';
+};
+const canAccess = (session,keys,required='view') => [].concat(keys).some(key=>(permissionRank[permissionLevel(session,key)]||0)>=(permissionRank[required]||1));
+
+export async function getAiEngineStatus(session) {
   const aca = getAcaIntegrationStatus();
   const connection = await probeConnection();
   return {
@@ -43,11 +53,11 @@ export async function getAiEngineStatus() {
     reasoningEffort: reasoningEffort(),
     api: 'responses',
     capabilities: {
-      operationalData: true,
-      academyData: true,
+      operationalData: canAccess(session,operationalKeys),
+      academyData: canAccess(session,'academy'),
       webSearch: true,
       functionCalling: true,
-      acaRpa: aca.rpaConfigured && aca.receiverConfigured,
+      acaRpa: canAccess(session,'doctor-licenses','manage') && aca.rpaConfigured && aca.receiverConfigured,
       writeActionsRequireConfirmation: true,
     },
   };
@@ -134,38 +144,68 @@ const compactRecord = (value, depth = 0) => {
     .map(([key, item]) => [key, compactRecord(item, depth + 1)]));
 };
 
-const searchRecords = ({ dataset, query, limit }) => {
+const datasetRowsForSession=(snapshot,dataset,session)=>{
+  const rows=Array.isArray(snapshot[dataset])?snapshot[dataset]:[];
+  if(dataset!=='providers')return rows;
+  const broad=canAccess(session,'human-resources','manage')||canAccess(session,['doctor-licenses','licenses','entity-medical','entity-care305','entity-aesthetics','entity-research']);
+  if(broad)return rows;
+  return canAccess(session,'human-resources')?rows.filter(row=>String(row.email||'').toLowerCase()===String(session.email||'').toLowerCase()):[];
+};
+
+const searchRecords = ({ dataset, query, limit },session) => {
   const snapshot = getOperationalSnapshot();
-  const rows = Array.isArray(snapshot[dataset]) ? snapshot[dataset] : [];
+  const rows = datasetRowsForSession(snapshot,dataset,session);
   const needle = String(query || '').trim().toLowerCase();
   const matches = rows.filter((row) => !needle || JSON.stringify(row).toLowerCase().includes(needle)).slice(0, limit);
   return { dataset, query, count: matches.length, available: rows.length, records: compactRecord(matches) };
 };
 
-async function executeTool(name, argumentsJson) {
+const datasetPermissionKeys = {
+  providers:['human-resources','doctor-licenses','licenses','entity-medical','entity-care305','entity-aesthetics','entity-research'],
+  contracts:['contracting'],
+  licenses:['licenses','doctor-licenses'],
+  entities:['entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research'],
+};
+
+const availableTools = session => tools.filter(tool => {
+  if (tool.type === 'web_search') return true;
+  if (['get_operational_overview','search_operational_records'].includes(tool.name)) return canAccess(session,operationalKeys);
+  if (tool.name === 'get_academy_status') return canAccess(session,'academy');
+  if (tool.name === 'get_aca_integration') return canAccess(session,'doctor-licenses');
+  if (tool.name === 'queue_aca_rpa_check') return canAccess(session,'doctor-licenses','manage');
+  return false;
+});
+
+async function executeTool(name, argumentsJson, session) {
   let args = {};
   try { args = JSON.parse(argumentsJson || '{}'); } catch { return { error: 'Invalid tool arguments' }; }
   if (name === 'get_operational_overview') {
+    if (!canAccess(session,operationalKeys)) return { error:'Access denied' };
     const snapshot = getOperationalSnapshot();
     return compactRecord({
       status: snapshot.status,
       counts: {
-        providers: snapshot.providers?.length || 0,
-        contracts: snapshot.contracts?.length || 0,
-        licenses: snapshot.licenses?.length || 0,
-        entities: snapshot.entities?.length || 0,
+        providers: canAccess(session,datasetPermissionKeys.providers) ? datasetRowsForSession(snapshot,'providers',session).length : null,
+        contracts: canAccess(session,datasetPermissionKeys.contracts) ? snapshot.contracts?.length || 0 : null,
+        licenses: canAccess(session,datasetPermissionKeys.licenses) ? snapshot.licenses?.length || 0 : null,
+        entities: canAccess(session,datasetPermissionKeys.entities) ? snapshot.entities?.length || 0 : null,
       },
     });
   }
-  if (name === 'search_operational_records') return searchRecords(args);
-  if (name === 'get_academy_status') return compactRecord(getAcademyStatus());
+  if (name === 'search_operational_records') {
+    if (!canAccess(session,datasetPermissionKeys[args.dataset]||[])) return { error:'Access denied for this operational dataset' };
+    return searchRecords(args,session);
+  }
+  if (name === 'get_academy_status') return canAccess(session,'academy')?compactRecord(getAcademyStatus()):{error:'Access denied'};
   if (name === 'get_aca_integration') {
+    if (!canAccess(session,'doctor-licenses')) return { error:'Access denied' };
     const status = getAcaIntegrationStatus();
     const checks = listAcaRpaChecks(args.source === 'all' ? undefined : args.source).slice(0, 12);
     const records = args.includeRecords && args.source !== 'all' ? listAcaRecords(args.source).slice(0, 20) : [];
     return compactRecord({ status, checks, records });
   }
   if (name === 'queue_aca_rpa_check') {
+    if (!canAccess(session,'doctor-licenses','manage')) return { error:'Doctor Licenses / ACA Manage access required' };
     const status = getAcaIntegrationStatus();
     if (!args.userConfirmed) return { status: 'confirmation_required', message: 'The user must explicitly confirm the exact ACA RPA check before it is queued.' };
     if (!status.rpaConfigured || !status.receiverConfigured) return { status: 'integration_not_ready', message: 'The authorized ACA RPA runner or callback key is not configured.' };
@@ -174,10 +214,11 @@ async function executeTool(name, argumentsJson) {
   return { error: `Unsupported tool: ${name}` };
 }
 
-const instructions = (lang, page = 'hub') => `You are Operational AI, the executive intelligence layer inside EM Group's Operational Hub.
+const instructions = (lang, page = 'hub', session = {}) => `You are Operational AI, the executive intelligence layer inside EM Group's Operational Hub.
 Answer in ${lang === 'en' ? 'English' : 'Spanish'} unless the user asks otherwise. Be concise, precise, useful and explicit about what data source you used.
 The user is currently working in the section identified as "${String(page).slice(0, 120)}". Use that section as working context, but never assume permission to modify records or run external actions without the required confirmation.
 Use internal tools for Operational Hub, Eastern Medical Academy, licensing, contracting, Human Resources and ACA data. Use web search only for current public information that is not already in the Hub.
+The signed-in user has only these internal permission keys: ${Object.entries(session.permissions||{}).filter(([,value])=>value==='view'||value==='manage').map(([key,value])=>`${key}:${value}`).join(', ')||'none'}. Administrator and owner roles are privileged. Never use, reveal or infer internal data outside this access scope.
 Never send patient names, phone numbers, email addresses, dates of birth, medical record identifiers or other PHI to web search. Never expose secrets or hidden configuration.
 Do not diagnose, interpret clinical results, recommend medication or replace a licensed professional.
 You may queue an ACA RPA check only when the latest user message explicitly asks to execute that exact check. Otherwise explain the proposed action and request confirmation.
@@ -244,7 +285,7 @@ const suggestedPage = (text) => {
   return '';
 };
 
-export async function runOperationalAi({ messages, lang = 'es', page = 'hub' }) {
+export async function runOperationalAi({ messages, lang = 'es', page = 'hub' }, session) {
   if (!apiKey()) {
     const error = new Error('The OpenAI integration key is not configured on the Operational Hub backend.');
     error.statusCode = 503;
@@ -259,8 +300,8 @@ export async function runOperationalAi({ messages, lang = 'es', page = 'hub' }) 
   const request = {
     model: model(),
     reasoning: { effort: reasoningEffort() },
-    instructions: instructions(lang, page),
-    tools,
+    instructions: instructions(lang, page, session),
+    tools: availableTools(session),
     tool_choice: 'auto',
     input,
     max_output_tokens: 5000,
@@ -273,7 +314,7 @@ export async function runOperationalAi({ messages, lang = 'es', page = 'hub' }) 
     if (!calls.length) break;
     request.input.push(...(response.output || []));
     for (const call of calls) {
-      const result = await executeTool(call.name, call.arguments);
+      const result = await executeTool(call.name, call.arguments, session);
       request.input.push({ type: 'function_call_output', call_id: call.call_id, output: JSON.stringify(result) });
     }
   }

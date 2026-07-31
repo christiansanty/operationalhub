@@ -1,5 +1,11 @@
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  emmsoContractSnapshot,
+  emmsoLicenseSnapshot,
+  emmsoProviderSnapshot,
+  emmsoSourceStatus,
+} from '../src/data/emmsoOperational.js';
 
 const privateRoot=path.resolve('private');
 const databasePath=path.join(privateRoot,'operational-hub.sqlite');
@@ -89,11 +95,16 @@ export function getOperationalSnapshot(){
   const database=openDatabase();
   try{
     const statusRow=database.prepare('SELECT * FROM operational_airtable_status WHERE id = 1').get();
-    const providers=database.prepare('SELECT * FROM operational_providers ORDER BY CASE WHEN status = \'ACTIVE\' THEN 0 ELSE 1 END, name, last_name').all().map(mapProvider);
-    const contracts=database.prepare('SELECT * FROM operational_contracts ORDER BY insurance').all().map(mapContract);
-    const licenses=database.prepare('SELECT * FROM operational_licenses ORDER BY title').all().map(mapLicense);
+    const storedProviders=database.prepare('SELECT * FROM operational_providers ORDER BY CASE WHEN status = \'ACTIVE\' THEN 0 ELSE 1 END, name, last_name').all().map(mapProvider);
+    const storedContracts=database.prepare('SELECT * FROM operational_contracts ORDER BY insurance').all().map(mapContract);
+    const storedLicenses=database.prepare('SELECT * FROM operational_licenses ORDER BY title').all().map(mapLicense);
     const entities=database.prepare('SELECT * FROM operational_entities ORDER BY table_name, title').all().map(mapEntity);
-    return {status:statusRow?{source:statusRow.source_name,baseId:statusRow.base_id,state:statusRow.state,message:statusRow.message||'',syncedAt:statusRow.synced_at||'',tableCounts:parseJson(statusRow.table_counts_json,{})}:{source:'Airtable · EM-MSO',baseId:'appCtkLVbC33nRuh1',state:'not-synced',message:'EM-MSO has not been synchronized with the protected backend yet.',syncedAt:'',tableCounts:{}},providers,contracts,licenses,entities};
+    // Keep the verified EM-MSO snapshot on the server only until the protected
+    // Airtable sync populates SQLite. The client bundle never imports this data.
+    const providers=storedProviders.length?storedProviders:emmsoProviderSnapshot;
+    const contracts=storedContracts.length?storedContracts:emmsoContractSnapshot;
+    const licenses=storedLicenses.length?storedLicenses:emmsoLicenseSnapshot;
+    return {status:statusRow?{source:statusRow.source_name,baseId:statusRow.base_id,state:statusRow.state,message:statusRow.message||'',syncedAt:statusRow.synced_at||'',tableCounts:parseJson(statusRow.table_counts_json,{})}:emmsoSourceStatus,providers,contracts,licenses,entities};
   }finally{database.close()}
 }
 
@@ -124,7 +135,20 @@ export function setOperationalSyncError(message){
 
 export function getOperationalAttachment(id){
   const snapshot=getOperationalSnapshot();
-  const all=[...snapshot.providers.flatMap(item=>item.sourceAttachments||[]),...snapshot.contracts.flatMap(item=>item.attachments||[]),...snapshot.licenses.flatMap(item=>item.attachments||[]),...snapshot.entities.flatMap(item=>item.attachments||[])];
+  const entityPermission=item=>{
+    const value=`${item.tableName||''} ${item.title||''}`.toLowerCase();
+    if(value.includes('research'))return 'entity-research';
+    if(value.includes('aesthetic'))return 'entity-aesthetics';
+    if(value.includes('seven'))return 'entity-seven';
+    if(value.includes('305'))return 'entity-care305';
+    return 'entity-medical';
+  };
+  const all=[
+    ...snapshot.providers.flatMap(item=>(item.sourceAttachments||[]).map(attachment=>({...attachment,ownerEmail:item.email||'',permissionKeys:['human-resources','doctor-licenses','licenses',item.entity==='Eastern Medical Research'?'entity-research':'entity-medical']}))),
+    ...snapshot.contracts.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:['contracting']}))),
+    ...snapshot.licenses.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:['licenses','doctor-licenses']}))),
+    ...snapshot.entities.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:[entityPermission(item)]}))),
+  ];
   const attachment=all.find(item=>item.id===id);
   if(!attachment?.relativePath)return null;
   const filePath=path.resolve(privateRoot,attachment.relativePath);

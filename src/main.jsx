@@ -17,13 +17,16 @@ import InternalAppsAcademy from './academy/InternalAppsAcademy.jsx';
 import OperationalProtocols, { DepartmentCourseMap } from './academy/OperationalProtocols.jsx';
 import LicenseCenter from './licenses/LicenseCenter.jsx';
 import EntityWorkspace, { entityDefinitions, entityNavItems, entityPage, parseEntityPage } from './entities/EntityWorkspace.jsx';
-import { emmsoContractSnapshot, emmsoLicenseSnapshot, emmsoProviderSnapshot, emmsoSourceStatus } from './data/emmsoOperational.js';
 import CorporateHub from './corporate/CorporateHub.jsx';
 import OperationalRoadmap from './roadmap/OperationalRoadmap.jsx';
 import HumanResources from './hr/HumanResources.jsx';
 import ApplicationEcosystem from './apps/ApplicationEcosystem.jsx';
 import { applicationPermissionModules } from './apps/applicationRegistry.js';
 import ServerUsersAdministration, { InvitationSetup } from './admin/UsersAdministration.jsx';
+import {
+  canSessionAccessApplication, canSessionAccessPage, canSessionManagePage,
+  firstAccessiblePage, sessionAccessSignature,
+} from './auth/accessControl.js';
 
 const UI = {
   en: {
@@ -168,9 +171,10 @@ const employeeRows = [
   {name:'Camila Santos', initials:'CS', dept:{en:'Clinical Operations',es:'Operaciones Clínicas'}, progress:100, score:98, last:{en:'Jul 12',es:'12 jul'}, status:{en:'Certified',es:'Certificada'}, statusKey:'certified'},
 ];
 
-const licenseRows = emmsoLicenseSnapshot;
-const contractRows = emmsoContractSnapshot;
-const staffRows = emmsoProviderSnapshot;
+const licenseRows = [];
+const contractRows = [];
+const staffRows = [];
+const emmsoSourceStatus={source:'Airtable · EM-MSO',baseId:'',state:'not-loaded',message:'Protected operational data loads after access is verified.',syncedAt:'',tableCounts:{}};
 
 const patientSteps = [
   ['Lead', 'Prospecto'], ['Call', 'Llamada'], ['Schedule', 'Cita'], ['Verify', 'Verificar'], ['Confirm', 'Confirmar'],
@@ -313,17 +317,49 @@ function LanguageSelect({lang,setLang,className=''}) {
   return <label className={`language-select ${className}`}><Languages size={17}/><span>{lang==='en'?'Language':'Idioma'}</span><select aria-label={lang==='en'?'Select language':'Seleccionar idioma'} value={lang} onChange={event=>setLang(event.target.value)}><option value="en">English</option><option value="es">Español</option></select><ChevronDown size={14}/></label>;
 }
 
-function Header({ lang,setLang,onMenu,onNavigate,canAccessCorporate=false,canAccessAdmin=false,canAccessPage=()=>true }) {
-  const t=UI[lang]; const [searchOpen,setSearchOpen]=useState(false); const [noticeOpen,setNoticeOpen]=useState(false); const [query,setQuery]=useState('');
+function Header({ lang,setLang,onMenu,onNavigate,currentPage='',canAccessCorporate=false,canAccessAdmin=false,canAccessPage=()=>true }) {
+  const t=UI[lang]; const [searchOpen,setSearchOpen]=useState(false); const [noticeOpen,setNoticeOpen]=useState(false); const [query,setQuery]=useState(''); const [sectionResults,setSectionResults]=useState([]);
   const searchItems=lang==='en'?[{label:'Dashboard',page:'hub'},{label:'Eastern Medical',page:'medical-overview'},{label:'305 Medical Care',page:'care305-overview'},{label:'Eastern Medical Aesthetics',page:'aesthetics-overview'},{label:'Seven Insurance',page:'seven-overview'},{label:'Eastern Medical Research',page:'research-overview'},{label:'Eastern Medical Academy',page:'academy'},{label:'All Leads',page:'leads'},{label:'Operational Protocols',page:'protocols'},{label:'License Management',page:'licenses'},{label:'Doctor Licenses',page:'doctor-licenses'},{label:'Contracting',page:'contracting'},{label:'Human Resources',page:'staff'},{label:'Administration Users',page:'users'}]:[{label:'Dashboard',page:'hub'},{label:'Eastern Medical',page:'medical-overview'},{label:'305 Medical Care',page:'care305-overview'},{label:'Eastern Medical Aesthetics',page:'aesthetics-overview'},{label:'Seven Insurance',page:'seven-overview'},{label:'Eastern Medical Research',page:'research-overview'},{label:'Eastern Medical Academy',page:'academy'},{label:'Todos los Leads',page:'leads'},{label:'Protocolos Operacionales',page:'protocols'},{label:'Gestión de Licencias',page:'licenses'},{label:'Licencias de doctores',page:'doctor-licenses'},{label:'Contratos',page:'contracting'},{label:'Recursos Humanos',page:'staff'},{label:'Usuarios de Administración',page:'users'}];
   if(canAccessAdmin)searchItems.push({label:lang==='en'?'Implementation Roadmap':'Roadmap de implementación',page:'roadmap'});
   if(canAccessCorporate)searchItems.push({label:lang==='en'?'Corporate Strategy Room':'Corporate · Sala de Estrategia',page:'corporate'});
   const results=searchItems.filter(item=>canAccessPage(item.page)&&item.label.toLowerCase().includes(query.toLowerCase()));
+  useEffect(()=>{
+    const shortcut=event=>{if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){event.preventDefault();setSearchOpen(true);globalThis.setTimeout(()=>document.querySelector('.top-search input')?.focus(),0)}};
+    globalThis.addEventListener('keydown',shortcut);return()=>globalThis.removeEventListener('keydown',shortcut);
+  },[]);
+  useEffect(()=>{setQuery('');setSectionResults([]);setSearchOpen(false)},[currentPage]);
+  useEffect(()=>{
+    const needle=query.trim().toLocaleLowerCase();
+    if(!searchOpen||needle.length<2){setSectionResults([]);return}
+    const root=document.querySelector('.main-shell > main');
+    if(!root){setSectionResults([]);return}
+    const candidates=[...root.querySelectorAll('table tbody tr, details > summary, [data-search-entry], article, h1, h2, h3')];
+    const seen=new Set();const matches=[];
+    for(const candidate of candidates){
+      if(candidate.offsetParent===null)continue;
+      const target=candidate.matches('h1,h2,h3')&&candidate.closest('article')?candidate.closest('article'):candidate;
+      const raw=String(target.textContent||'').replace(/\s+/g,' ').trim();
+      if(raw.length<2||!raw.toLocaleLowerCase().includes(needle)||seen.has(target))continue;
+      seen.add(target);
+      const heading=target.matches('tr')?'':target.querySelector?.('h1,h2,h3,h4,strong')?.textContent?.trim();
+      const index=raw.toLocaleLowerCase().indexOf(needle);const start=Math.max(0,index-42);const excerpt=`${start?'…':''}${raw.slice(start,start+170)}${raw.length>start+170?'…':''}`;
+      matches.push({target,label:heading||raw.slice(0,92),excerpt});
+      if(matches.length===8)break;
+    }
+    setSectionResults(matches);
+  },[query,searchOpen,currentPage]);
+  const openSectionResult=result=>{
+    const details=result.target.closest?.('details');if(details)details.open=true;
+    result.target.scrollIntoView({behavior:'smooth',block:'center'});
+    result.target.classList.add('section-search-hit');
+    globalThis.setTimeout(()=>result.target.classList.remove('section-search-hit'),1800);
+    setQuery('');setSearchOpen(false);
+  };
   return <header className="topbar">
     <button className="menu-btn" onClick={onMenu}><Menu/></button>
     <div className="topbar-brand"><img src={EM_GROUP_LOGO} alt="EM Group"/><span>Operational Hub</span></div>
-    <div className="global-search"><div className={`top-search ${searchOpen?'focused':''}`}><Search size={17}/><input value={query} onFocus={()=>setSearchOpen(true)} onChange={e=>{setQuery(e.target.value);setSearchOpen(true)}} placeholder={lang==='en'?'Search Operational Hub…':'Buscar en Operational Hub…'}/><kbd>⌘ K</kbd></div>{searchOpen&&<><button className="search-scrim" aria-label="Close search" onClick={()=>setSearchOpen(false)}/><div className="search-popover"><span>{lang==='en'?'SEARCH & NAVIGATE':'BUSCAR Y NAVEGAR'}</span>{results.map((item,i)=><button key={`${item.page}-${item.label}`} onClick={()=>{setQuery('');setSearchOpen(false);onNavigate(item.page)}}><Search size={14}/><strong>{item.label}</strong><small>0{i+1}</small></button>)}{!results.length&&<p>{lang==='en'?'No matching records':'No hay resultados'}</p>}</div></>}</div>
-    <div className="top-actions"><LanguageSelect lang={lang} setLang={setLang}/><div className="notification-wrap"><button className={`notify ${noticeOpen?'active':''}`} title={t.notifications} onClick={()=>setNoticeOpen(!noticeOpen)}><Bell size={19}/><i/></button>{noticeOpen&&<div className="notification-panel"><div><span>{lang==='en'?'NOTIFICATIONS':'NOTIFICACIONES'}</span><strong>{lang==='en'?'3 items need attention':'3 asuntos requieren atención'}</strong></div><button onClick={()=>onNavigate('licenses')}><AlertTriangle size={17}/><p><strong>{lang==='en'?'License renewal approaching':'Renovación de licencia próxima'}</strong><span>Seven Insurance · 26 {lang==='en'?'days':'días'}</span></p></button><button onClick={()=>onNavigate('doctor-licenses')}><UserRound size={17}/><p><strong>{lang==='en'?'Doctor license review pending':'Revisión de licencia médica pendiente'}</strong><span>2 {lang==='en'?'provider records':'expedientes de proveedores'}</span></p></button><button onClick={()=>onNavigate('team')}><GraduationCap size={17}/><p><strong>{lang==='en'?'Training follow-up':'Seguimiento de capacitación'}</strong><span>4 {lang==='en'?'learners behind':'estudiantes atrasados'}</span></p></button></div>}</div><div className="avatar small">AD</div></div>
+    <div className="global-search"><div className={`top-search ${searchOpen?'focused':''}`}><Search size={17}/><input value={query} onFocus={()=>setSearchOpen(true)} onChange={e=>{setQuery(e.target.value);setSearchOpen(true)}} placeholder={lang==='en'?'Search this section or navigate…':'Buscar aquí o navegar…'}/><kbd>⌘ K</kbd></div>{searchOpen&&<><button className="search-scrim" aria-label="Close search" onClick={()=>setSearchOpen(false)}/><div className="search-popover section-aware-search">{query.trim().length>=2&&<><span>{lang==='en'?'IN THIS SECTION':'EN ESTA SECCIÓN'}</span>{sectionResults.map((item,i)=><button className="section-result" key={`section-${i}`} onClick={()=>openSectionResult(item)}><Search size={14}/><span><strong>{item.label}</strong><small>{item.excerpt}</small></span><b>{lang==='en'?'Open':'Ver'}</b></button>)}</>}<span>{lang==='en'?'AUTHORIZED MODULES':'MÓDULOS AUTORIZADOS'}</span>{results.map((item,i)=><button key={`${item.page}-${item.label}`} onClick={()=>{setQuery('');setSearchOpen(false);onNavigate(item.page)}}><ArrowRight size={14}/><strong>{item.label}</strong><small>0{i+1}</small></button>)}{!results.length&&!sectionResults.length&&<p>{lang==='en'?'No matching information in this section':'No hay información coincidente en esta sección'}</p>}</div></>}</div>
+    <div className="top-actions"><LanguageSelect lang={lang} setLang={setLang}/><div className="notification-wrap"><button className={`notify ${noticeOpen?'active':''}`} title={t.notifications} onClick={()=>setNoticeOpen(!noticeOpen)}><Bell size={19}/><i/></button>{noticeOpen&&<div className="notification-panel"><div><span>{lang==='en'?'NOTIFICATIONS':'NOTIFICACIONES'}</span><strong>{lang==='en'?'Authorized items that need attention':'Asuntos autorizados que requieren atención'}</strong></div>{canAccessPage('licenses')&&<button onClick={()=>onNavigate('licenses')}><AlertTriangle size={17}/><p><strong>{lang==='en'?'License renewal approaching':'Renovación de licencia próxima'}</strong><span>Seven Insurance · 26 {lang==='en'?'days':'días'}</span></p></button>}{canAccessPage('doctor-licenses')&&<button onClick={()=>onNavigate('doctor-licenses')}><UserRound size={17}/><p><strong>{lang==='en'?'Doctor license review pending':'Revisión de licencia médica pendiente'}</strong><span>2 {lang==='en'?'provider records':'expedientes de proveedores'}</span></p></button>}{canAccessPage('academy')&&<button onClick={()=>onNavigate('team')}><GraduationCap size={17}/><p><strong>{lang==='en'?'Training follow-up':'Seguimiento de capacitación'}</strong><span>{lang==='en'?'Open your Academy record':'Abrir tu expediente de Academy'}</span></p></button>}</div>}</div><div className="avatar small">AD</div></div>
   </header>
 }
 
@@ -331,9 +367,9 @@ function Metric({icon:Icon,label,value,delta,tone}) { return <div className="met
 
 function HubDashboard({lang,setPage,operationalData,canAccessCorporate=false,canAccessAdmin=false,canAccessPage=()=>true,canAccessApplication=()=>true}) {
   const isEn=lang==='en';
-  const providers=operationalData?.providers||staffRows;
-  const contracts=operationalData?.contracts||contractRows;
-  const licenses=operationalData?.licenses||licenseRows;
+  const providers=operationalData?.providers||[];
+  const contracts=operationalData?.contracts||[];
+  const licenses=operationalData?.licenses||[];
   const sourceStatus=operationalData?.status||emmsoSourceStatus;
   const attachmentCount=providers.reduce((sum,row)=>sum+(row.sourceAttachments?.length||0),0)+contracts.reduce((sum,row)=>sum+(row.attachmentCount||row.attachments?.length||0),0)+licenses.reduce((sum,row)=>sum+(row.attachments?.length||0),0);
   let leads=[];
@@ -698,33 +734,6 @@ function Certificate({lang,onBack,learner}) {
   return <div className="page certificate-page"><div className="certificate-actions"><button onClick={onBack}><ArrowLeft size={17}/>{lang==='en'?'Back':'Volver'}</button><div><button onClick={download}><Download size={17}/>{t.download}</button><button className="primary" onClick={()=>window.print()}><FileCheck2 size={17}/>{t.print}</button></div></div><div className="certificate"><div className="cert-border"><div className="cert-corner tl"/><div className="cert-corner tr"/><div className="cert-corner bl"/><div className="cert-corner br"/><Brand/><img className="certificate-photo" src={photoUrl} alt={employeeName} onError={event=>{event.currentTarget.style.display='none'}}/><div className="certificate-seal"><Award size={46}/></div><span className="cert-overline">{t.certificate}</span><h1>{t.certifies}</h1><h2>{employeeName}</h2><div className="cert-line"/><p>{t.certifiedText}</p><h3>{certifiedCourse.title[lang]}</h3><div className="cert-details"><div><strong>{completedLabel}</strong><span>{lang==='en'?'Date completed':'Fecha de finalización'}</span></div><div className="seal-small"><HeartPulse size={25}/></div><div><strong>{certificateId}</strong><span>{lang==='en'?'Certificate ID':'ID del certificado'}</span></div></div><div className="signature-row"><div><i>{lang==='en'?'Training Direction':'Dirección de Capacitación'}</i><span>{lang==='en'?'Academy authorization':'Autorización de Academy'}</span></div><div><i>________________</i><span>{lang==='en'?'Supervisor approval':'Aprobación del supervisor'}</span></div></div></div></div><p className="certificate-note"><ShieldCheck size={16}/>{archive?(lang==='en'?'Archived in the employee’s individual Academy record.':'Archivado en el expediente individual de Academy del colaborador.'):(lang==='en'?'The certificate will be archived when the Academy backend is available.':'El certificado se archivará cuando el backend de Academy esté disponible.')}</p></div>
 }
 
-const pagePermissionKey=page=>{
-  const entityContext=parseEntityPage(page);
-  if(entityContext)return `entity-${entityContext.definition.key}`;
-  if(['academy','learning','systems','certificates','team'].includes(page))return 'academy';
-  return ({hub:'dashboard',leads:'leads',protocols:'protocols',licenses:'licenses',aca:'doctor-licenses','doctor-licenses':'doctor-licenses',contracting:'contracting',staff:'human-resources',users:'admin-users'})[page]||null;
-};
-
-const canSessionAccessPage=(session,page)=>{
-  if(!session)return false;
-  if(page==='corporate')return session.role==='owner'||session.scope==='full';
-  if(page==='roadmap')return session.role==='admin'||session.role==='owner'||session.scope==='full';
-  if(session.role==='owner'||session.scope==='full')return true;
-  if(session.role==='admin')return true;
-  const key=pagePermissionKey(page);
-  if(session.scope==='academy')return key==='academy';
-  if(key==='dashboard'&&Object.entries(session.permissions||{}).some(([permissionKey,value])=>permissionKey.startsWith('app-')&&['view','manage'].includes(value)))return true;
-  const permission=session.permissions?.[key]||(key==='human-resources'?session.permissions?.personnel:null);
-  return ['view','manage'].includes(permission);
-};
-
-const canSessionAccessApplication=(session,applicationId)=>{
-  if(!session)return false;
-  if(session.role==='owner'||session.role==='admin'||session.scope==='full')return true;
-  return ['view','manage'].includes(session.permissions?.[`app-${applicationId}`]);
-};
-
-const firstAccessiblePage=session=>['hub','medical-overview','care305-overview','aesthetics-overview','seven-overview','research-overview','leads','protocols','licenses','doctor-licenses','contracting','staff','academy','users','roadmap'].find(page=>canSessionAccessPage(session,page))||'academy';
 const academyPages=['academy','learning','systems','certificates','team'];
 
 const initialDemoSession=()=>{
@@ -744,11 +753,13 @@ function App(){
   const [lang,setLang]=useState(()=>localStorage.getItem('ema-language')||'en');
   const [operationalData,setOperationalData]=useState({providers:staffRows,contracts:contractRows,licenses:licenseRows,entities:[],status:emmsoSourceStatus});
   const academyOnly=session?.scope==='academy';
-  const canAccessCorporate=session?.role==='owner'||session?.scope==='full';
-  const canAccessAdmin=session?.role==='admin'||session?.role==='owner'||session?.scope==='full';
+  const canAccessCorporate=canSessionAccessPage(session,'corporate');
+  const canAccessAdmin=canSessionAccessPage(session,'roadmap');
   const canAccessPage=target=>canSessionAccessPage(session,target);
-  const canManageUsers=canAccessAdmin||session?.permissions?.['admin-users']==='manage';
-  const canManageAcademy=canAccessAdmin;
+  const canManageUsers=canSessionManagePage(session,'users');
+  const canManageAcademy=canSessionManagePage(session,'academy');
+  const canManageHumanResources=canSessionManagePage(session,'staff');
+  const accessSignature=sessionAccessSignature(session);
   const [page,setPage]=useState(()=>{const stored=(localStorage.getItem('ema-active-page')||firstAccessiblePage(session));const normalized=stored==='aca'?'doctor-licenses':stored;return canSessionAccessPage(session,normalized)?normalized:firstAccessiblePage(session)});
   const [academyBackStack,setAcademyBackStack]=useState([]);
   const [academyForwardStack,setAcademyForwardStack]=useState([]);
@@ -758,7 +769,7 @@ function App(){
     if(invitationToken){setSessionReady(true);return}
     if(session?.demo){setSessionReady(true);return}
     let active=true;
-    fetch('/api/auth/session').then(async response=>{
+    const refreshSession=()=>fetch('/api/auth/session',{cache:'no-store'}).then(async response=>{
       if(!response.ok)return null;
       const payload=await response.json();
       return payload.session||null;
@@ -767,14 +778,25 @@ function App(){
       localStorage.removeItem('ema-session');
       if(serverSession){
         localStorage.removeItem('ema-demo-login');
-        setSession(serverSession);
+        setSession(current=>sessionAccessSignature(current)===sessionAccessSignature(serverSession)?current:serverSession);
         setPage(current=>canSessionAccessPage(serverSession,current)?current:firstAccessiblePage(serverSession));
+      }else{
+        setSession(null);setPage('');setCourse(null);sessionStorage.removeItem('ema-active-course');
       }
     }).catch(()=>null).finally(()=>active&&setSessionReady(true));
-    return()=>{active=false};
-  },[]);
-  useEffect(()=>{if(!activeLearner?.learnerId)return;fetch('/api/academy/records/profile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({learnerId:activeLearner.learnerId,name:activeLearner.name||'Employee',email:activeLearner.email||''})}).catch(()=>null)},[activeLearner?.learnerId,activeLearner?.name,activeLearner?.email]);
-  useEffect(()=>{let active=true;fetch('/api/operational/airtable/snapshot').then(response=>{if(!response.ok)throw new Error();return response.json()}).then(payload=>{if(!active)return;setOperationalData({providers:payload.providers?.length?payload.providers:staffRows,contracts:payload.contracts?.length?payload.contracts:contractRows,licenses:payload.licenses?.length?payload.licenses:licenseRows,entities:payload.entities||[],status:{...emmsoSourceStatus,...payload.status}})}).catch(()=>null);return()=>{active=false}},[]);
+    refreshSession();
+    const interval=globalThis.setInterval(refreshSession,10000);
+    const onFocus=()=>refreshSession();
+    const onVisibility=()=>{if(document.visibilityState==='visible')refreshSession()};
+    const onStorage=event=>{if(event.key==='operational-hub-access-updated')refreshSession()};
+    globalThis.addEventListener('focus',onFocus);
+    globalThis.addEventListener('storage',onStorage);
+    document.addEventListener('visibilitychange',onVisibility);
+    return()=>{active=false;globalThis.clearInterval(interval);globalThis.removeEventListener('focus',onFocus);globalThis.removeEventListener('storage',onStorage);document.removeEventListener('visibilitychange',onVisibility)};
+  },[invitationToken,session?.demo]);
+  useEffect(()=>{if(!activeLearner?.learnerId||!canSessionAccessPage(session,'academy'))return;fetch('/api/academy/records/profile',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({learnerId:activeLearner.learnerId,name:activeLearner.name||'Employee',email:activeLearner.email||''})}).catch(()=>null)},[activeLearner?.learnerId,activeLearner?.name,activeLearner?.email,accessSignature]);
+  useEffect(()=>{if(!session||!['dashboard','contracting','licenses','doctor-licenses','human-resources','entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research'].some(key=>['view','manage'].includes(session.permissions?.[key]))&&session.role!=='admin'&&session.role!=='owner'&&session.scope!=='full')return;let active=true;fetch('/api/operational/airtable/snapshot').then(response=>{if(!response.ok)throw new Error();return response.json()}).then(payload=>{if(!active)return;setOperationalData({providers:payload.providers||[],contracts:payload.contracts||[],licenses:payload.licenses||[],entities:payload.entities||[],status:{...emmsoSourceStatus,...payload.status}})}).catch(()=>null);return()=>{active=false}},[accessSignature]);
+  useEffect(()=>{if(!session)return;const destination=firstAccessiblePage(session);if(course&&!canSessionAccessPage(session,'academy')){sessionStorage.removeItem('ema-active-course');setCourse(null)}if(!canSessionAccessPage(session,page)&&destination){localStorage.setItem('ema-active-page',destination);setPage(destination)}},[accessSignature,page,course]);
   const setLanguage=value=>{localStorage.setItem('ema-language',value);setLang(value)};
   const login=async({demo=false,email='',password='',photoDataUrl=''})=>{
     if(demo){
@@ -814,7 +836,7 @@ function App(){
   };
   const openCourse=selected=>{if(page!=='learning')recordAcademyDestination('learning');sessionStorage.setItem('ema-active-course',selected.id);localStorage.setItem('ema-active-page','learning');setCourse(selected);setPage('learning')};
   const closeCourse=()=>{sessionStorage.removeItem('ema-active-course');setCourse(null)};
-  const navigate=target=>{const requested=target==='aca'?'doctor-licenses':target;const destination=canAccessPage(requested)?requested:firstAccessiblePage(session);if(academyPages.includes(destination)&&destination!==page)recordAcademyDestination(destination);sessionStorage.removeItem('ema-active-course');localStorage.setItem('ema-active-page',destination);setCourse(null);setPage(destination)};
+  const navigate=target=>{const requested=target==='aca'?'doctor-licenses':target;const destination=canAccessPage(requested)?requested:firstAccessiblePage(session);if(!destination)return;if(academyPages.includes(destination)&&destination!==page)recordAcademyDestination(destination);sessionStorage.removeItem('ema-active-course');localStorage.setItem('ema-active-page',destination);setCourse(null);setPage(destination)};
   const moveAcademyHistory=direction=>{
     const source=direction<0?academyBackStack:academyForwardStack;
     if(!source.length)return;
@@ -832,24 +854,25 @@ function App(){
   if(invitationToken)return <InvitationSetup token={invitationToken} lang={lang} setLang={setLanguage} onAccepted={acceptInvitation}/>;
   if(!sessionReady)return <div className="invitation-shell"><section className="invitation-card"><div className="invitation-brand"><span><ShieldCheck/></span><div><strong>Operational Hub</strong><small>EM GROUP</small></div></div><div className="invitation-loading"><Clock3/><p>{lang==='en'?'Restoring your secure session…':'Restaurando tu sesión segura…'}</p></div></section></div>;
   if(!session)return <Login onLogin={login} lang={lang} setLang={setLanguage}/>;
-  if(course?.source==='airtable')return <><AirtableCourseDetail course={course} lang={lang} setLang={setLanguage} onBack={closeCourse} onHub={returnHome} academyOnly={academyOnly}/><AIAssistant lang={lang} page={`academy:${course.id}`} onNavigate={navigate}/></>;
-  if(course)return <><AcademyLesson course={course} lang={lang} setLang={setLanguage} onBack={closeCourse} onHub={returnHome} academyOnly={academyOnly} learner={activeLearner} onCertificate={()=>{localStorage.setItem('ema-last-certified-course',course.id);navigate('certificates')}}/><AIAssistant lang={lang} page={`academy:${course.id}`} onNavigate={navigate}/></>;
+  if(!firstAccessiblePage(session))return <div className="invitation-shell"><section className="invitation-card"><div className="invitation-brand"><span><LockKeyhole/></span><div><strong>Operational Hub</strong><small>EM GROUP</small></div></div><div className="invitation-invalid"><AlertTriangle/><h1>{lang==='en'?'No sections assigned':'No hay secciones asignadas'}</h1><p>{lang==='en'?'Your account is active but has no authorized section. Contact an administrator.':'Tu cuenta está activa, pero no tiene ninguna sección autorizada. Contacta a un administrador.'}</p><button className="invitation-submit" onClick={logout}>{lang==='en'?'Sign out':'Cerrar sesión'}</button></div></section></div>;
+  if(course?.source==='airtable'&&canAccessPage('academy'))return <><AirtableCourseDetail course={course} lang={lang} setLang={setLanguage} onBack={closeCourse} onHub={returnHome} academyOnly={academyOnly}/><AIAssistant lang={lang} page={`academy:${course.id}`} onNavigate={navigate}/></>;
+  if(course&&canAccessPage('academy'))return <><AcademyLesson course={course} lang={lang} setLang={setLanguage} onBack={closeCourse} onHub={returnHome} academyOnly={academyOnly} learner={activeLearner} onCertificate={()=>{localStorage.setItem('ema-last-certified-course',course.id);navigate('certificates')}}/><AIAssistant lang={lang} page={`academy:${course.id}`} onNavigate={navigate}/></>;
   if(entityContext)return <div className="app-shell">
     <Sidebar page={page} setPage={navigate} lang={lang} onLogout={logout} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/>
     {mobile&&<><div className="mobile-overlay" onClick={()=>setMobile(false)}/><Sidebar mobile page={page} setPage={navigate} lang={lang} onLogout={logout} close={()=>setMobile(false)} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/></>}
-    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><EntityWorkspace definition={entityContext.definition} section={entityContext.section} lang={lang} onNavigate={navigate} staffRows={operationalData.providers} renderLeads={()=><Leads lang={lang} initialService={entityContext.definition.service} businessTitle={entityContext.definition.name} embedded/>}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Operational source · Airtable EM-MSO':'Fuente operacional · Airtable EM-MSO'}</footer></div>
+    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><EntityWorkspace definition={entityContext.definition} section={entityContext.section} lang={lang} onNavigate={navigate} staffRows={operationalData.providers} renderLeads={()=><Leads lang={lang} initialService={entityContext.definition.service} businessTitle={entityContext.definition.name} embedded/>}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Operational source · Airtable EM-MSO':'Fuente operacional · Airtable EM-MSO'}</footer></div>
   </div>;
   if(page==='protocols')return <div className="app-shell">
     <Sidebar page={page} setPage={navigate} lang={lang} onLogout={logout} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/>
     {mobile&&<><div className="mobile-overlay" onClick={()=>setMobile(false)}/><Sidebar mobile page={page} setPage={navigate} lang={lang} onLogout={logout} close={()=>setMobile(false)} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/></>}
-    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><OperationalProtocols lang={lang}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Prototype · Operational data requires final validation':'Prototipo · Los datos operativos requieren validación final'}</footer></div>
+    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><OperationalProtocols lang={lang}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Prototype · Operational data requires final validation':'Prototipo · Los datos operativos requieren validación final'}</footer></div>
   </div>;
   return <div className="app-shell">
     <Sidebar page={page} setPage={navigate} lang={lang} onLogout={logout} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/>
     {mobile&&<><div className="mobile-overlay" onClick={()=>setMobile(false)}/><Sidebar mobile page={page} setPage={navigate} lang={lang} onLogout={logout} close={()=>setMobile(false)} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/></>}
-    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main>
+    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main>
       {academyPages.includes(page)&&<AcademyNavigationBar lang={lang} currentPage={page} canBack={academyBackStack.length>0} canForward={academyForwardStack.length>0} onBack={()=>moveAcademyHistory(-1)} onForward={()=>moveAcademyHistory(1)} onHome={()=>navigate('academy')} onCatalog={()=>navigate('learning')}/>}
-      {page==='hub'&&<HubDashboard lang={lang} setPage={navigate} operationalData={operationalData} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} canAccessApplication={applicationId=>canSessionAccessApplication(session,applicationId)}/>} {page==='leads'&&<Leads lang={lang}/>} {page==='licenses'&&<Licenses lang={lang} licenseRowsData={operationalData.licenses} staffRowsData={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='doctor-licenses'&&<Licenses lang={lang} initialCategory="doctors" licenseRowsData={operationalData.licenses} staffRowsData={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='contracting'&&<Contracting lang={lang} contractRowsData={operationalData.contracts} sourceStatus={operationalData.status}/>} {page==='staff'&&<HumanResources lang={lang} employees={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='corporate'&&canAccessCorporate&&<CorporateHub lang={lang} ownerName={session?.name}/>} {page==='users'&&<ServerUsersAdministration lang={lang} session={session} canManage={canManageUsers}/>} {page==='roadmap'&&canAccessAdmin&&<OperationalRoadmap lang={lang}/>} {page==='academy'&&<Dashboard lang={lang} onOpen={openCourse} setPage={navigate} session={session} canManageAcademy={canManageAcademy}/>} {page==='learning'&&<Library lang={lang} onOpen={openCourse}/>} {page==='systems'&&<SystemsTraining lang={lang} onOpen={openCourse}/>} {page==='certificates'&&<Certificate lang={lang} learner={activeLearner} onBack={()=>navigate('academy')}/>} {page==='team'&&<TeamProgress lang={lang}/>}
+      {page==='hub'&&<HubDashboard lang={lang} setPage={navigate} operationalData={operationalData} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} canAccessApplication={applicationId=>canSessionAccessApplication(session,applicationId)}/>} {page==='leads'&&<Leads lang={lang}/>} {page==='licenses'&&<Licenses lang={lang} licenseRowsData={operationalData.licenses} staffRowsData={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='doctor-licenses'&&<Licenses lang={lang} initialCategory="doctors" licenseRowsData={operationalData.licenses} staffRowsData={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='contracting'&&<Contracting lang={lang} contractRowsData={operationalData.contracts} sourceStatus={operationalData.status}/>} {page==='staff'&&<HumanResources lang={lang} employees={operationalData.providers} sourceStatus={operationalData.status} session={session} canManage={canManageHumanResources}/>} {page==='corporate'&&canAccessCorporate&&<CorporateHub lang={lang} ownerName={session?.name}/>} {page==='users'&&<ServerUsersAdministration lang={lang} session={session} canManage={canManageUsers}/>} {page==='roadmap'&&canAccessAdmin&&<OperationalRoadmap lang={lang}/>} {page==='academy'&&<Dashboard lang={lang} onOpen={openCourse} setPage={navigate} session={session} canManageAcademy={canManageAcademy}/>} {page==='learning'&&<Library lang={lang} onOpen={openCourse}/>} {page==='systems'&&<SystemsTraining lang={lang} onOpen={openCourse}/>} {page==='certificates'&&<Certificate lang={lang} learner={activeLearner} onBack={()=>navigate('academy')}/>} {page==='team'&&<TeamProgress lang={lang}/>}
     </main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Operational source · Airtable EM-MSO':'Fuente operacional · Airtable EM-MSO'}</footer></div>
   </div>
 }

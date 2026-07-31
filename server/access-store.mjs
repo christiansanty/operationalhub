@@ -4,11 +4,18 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { getAccessEmailStatus, sendAccessInvitation } from './access-email.mjs';
 
-const privateRoot = path.resolve('private');
-const databasePath = path.join(privateRoot, 'operational-hub.sqlite');
+const databasePath = process.env.OPERATIONAL_HUB_DATABASE_PATH
+  ? path.resolve(process.env.OPERATIONAL_HUB_DATABASE_PATH)
+  : path.resolve('private', 'operational-hub.sqlite');
+const privateRoot = path.dirname(databasePath);
 const invitationLifetimeMs = 72 * 60 * 60 * 1000;
 const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 const permissionValues = new Set(['none', 'view', 'manage']);
+const permissionKeys = new Set([
+  'dashboard','entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research',
+  'leads','protocols','licenses','doctor-licenses','contracting','academy','human-resources','personnel','admin-users',
+  'app-seven-insurance','app-scribex-health','app-carecheck360','app-financial-hub','app-marketing-suite','app-executive-assistant',
+]);
 const accessProfiles = new Set(['academy', 'custom', 'admin', 'owner']);
 const employmentStatuses = new Set(['active', 'inactive']);
 
@@ -98,8 +105,10 @@ function publicSession(row) {
     name: user.name,
     email: user.email,
     role: user.role,
+    accessProfile: user.accessProfile,
     scope: user.role === 'owner' ? 'full' : user.role === 'admin' ? 'hub' : assigned.length === 1 && assigned[0][0] === 'academy' ? 'academy' : 'custom',
     permissions: user.permissions,
+    updatedAt: user.updatedAt,
   };
 }
 
@@ -113,8 +122,18 @@ function validatePermissions(value) {
   return Object.fromEntries(Object.entries(value).slice(0, 100).map(([key, permission]) => {
     const safeKey = clean(key, 100);
     return [safeKey, permissionValues.has(permission) ? permission : 'none'];
-  }).filter(([key]) => key));
+  }).filter(([key]) => permissionKeys.has(key)));
 }
+
+function permissionsForProfile(profile, value) {
+  const permissions = validatePermissions(value);
+  if (profile === 'academy') {
+    return { ...Object.fromEntries(Object.keys(permissions).map(key => [key, 'none'])), academy:'view' };
+  }
+  return permissions;
+}
+
+const stablePermissions = value => JSON.stringify(Object.entries(value || {}).sort(([left], [right]) => left.localeCompare(right)));
 
 function roleForProfile(profile) {
   return profile === 'owner' ? 'owner' : profile === 'admin' ? 'admin' : 'employee';
@@ -208,7 +227,7 @@ export async function inviteAccessUser(payload, baseUrl, actorId = 'demo-admin')
   const email = normalizeEmail(payload.email);
   const employmentStatus = employmentStatuses.has(payload.employmentStatus) ? payload.employmentStatus : 'active';
   const accessProfile = accessProfiles.has(payload.accessProfile) ? payload.accessProfile : 'academy';
-  const permissions = validatePermissions(payload.permissions);
+  const permissions = permissionsForProfile(accessProfile, payload.permissions);
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     const error = new Error('A valid name and work email are required.');
     error.statusCode = 400;
@@ -368,9 +387,14 @@ export function updateAccessUser(userId, payload, actorId = 'demo-admin') {
     const name = payload.name === undefined ? row.name : clean(payload.name, 160);
     const employmentStatus = payload.employmentStatus === undefined ? row.employment_status : payload.employmentStatus;
     const accessProfile = payload.accessProfile === undefined ? row.access_profile : payload.accessProfile;
-    const permissions = payload.permissions === undefined ? parseJson(row.permissions_json) : validatePermissions(payload.permissions);
+    const permissions = permissionsForProfile(accessProfile,payload.permissions === undefined ? parseJson(row.permissions_json) : payload.permissions);
     if (!name || !employmentStatuses.has(employmentStatus) || !accessProfiles.has(accessProfile)) {
       const error = new Error('Invalid user settings.');
+      error.statusCode = 400;
+      throw error;
+    }
+    if (!Object.values(permissions).some(value => value === 'view' || value === 'manage') && !['admin', 'owner'].includes(accessProfile)) {
+      const error = new Error('At least one section permission is required.');
       error.statusCode = 400;
       throw error;
     }
@@ -381,9 +405,13 @@ export function updateAccessUser(userId, payload, actorId = 'demo-admin') {
         : row.account_status;
     database.prepare(`UPDATE access_users SET name = ?, employment_status = ?, access_profile = ?, role = ?, permissions_json = ?, account_status = ?, updated_at = ? WHERE id = ?`)
       .run(name, employmentStatus, accessProfile, roleForProfile(accessProfile), JSON.stringify(permissions), accountStatus, now(), userId);
-    if (accountStatus === 'disabled') database.prepare('DELETE FROM access_sessions WHERE user_id = ?').run(userId);
+    const accessChanged = employmentStatus !== row.employment_status
+      || accessProfile !== row.access_profile
+      || roleForProfile(accessProfile) !== row.role
+      || stablePermissions(permissions) !== stablePermissions(parseJson(row.permissions_json));
+    const revoked = accessChanged ? database.prepare('DELETE FROM access_sessions WHERE user_id = ?').run(userId).changes : 0;
     audit(database, actorId, 'user_access_updated', userId, { employmentStatus, accessProfile });
-    return publicUser(database.prepare('SELECT * FROM access_users WHERE id = ?').get(userId));
+    return { user:publicUser(database.prepare('SELECT * FROM access_users WHERE id = ?').get(userId)), sessionsRevoked:Number(revoked || 0) };
   } finally { database.close() }
 }
 

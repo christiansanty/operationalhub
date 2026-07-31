@@ -1,3 +1,4 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { getHrPackage } from './hr-package-store.mjs';
 
@@ -5,8 +6,10 @@ function configuration() {
   const accountId = String(process.env.DOCUSIGN_ACCOUNT_ID || '').trim();
   const accessToken = String(process.env.DOCUSIGN_ACCESS_TOKEN || '').trim();
   const basePath = String(process.env.DOCUSIGN_BASE_PATH || 'https://demo.docusign.net/restapi').replace(/\/$/, '');
+  const connectUrl = String(process.env.DOCUSIGN_CONNECT_URL || '').trim();
+  const hmacSecret = String(process.env.DOCUSIGN_CONNECT_HMAC_SECRET || '').trim();
   const environment = basePath.includes('demo.docusign.net') ? 'demo' : 'production';
-  return { accountId, accessToken, basePath, environment, connected: Boolean(accountId && accessToken) };
+  return { accountId, accessToken, basePath, connectUrl, hmacSecret, environment, connected: Boolean(accountId && accessToken), webhookReady:Boolean(connectUrl&&hmacSecret) };
 }
 
 export function getDocusignStatus() {
@@ -17,6 +20,8 @@ export function getDocusignStatus() {
     environment: config.environment,
     accountConfigured: Boolean(config.accountId),
     authenticationConfigured: Boolean(config.accessToken),
+    webhookReady:config.webhookReady,
+    callbackUrl:config.connectUrl,
   };
 }
 
@@ -31,10 +36,11 @@ export async function createDocusignEnvelope(payload = {}) {
   const packageIds = Array.isArray(payload.packageIds) ? [...new Set(payload.packageIds.map(String))].slice(0, 10) : [];
   const signerName = String(payload.signerName || '').trim();
   const signerEmail = String(payload.signerEmail || '').trim();
+  const employeeUserId = String(payload.employeeUserId || '').trim().slice(0, 100);
   const emailSubject = String(payload.emailSubject || 'Employee Package for signature').trim().slice(0, 100);
   const emailBlurb = String(payload.emailBlurb || '').trim().slice(0, 10000);
-  if (!packageIds.length || !signerName || !signerEmail) {
-    const error = new Error('At least one document, signer name and signer email are required.');
+  if (!packageIds.length || !signerName || !signerEmail || !employeeUserId) {
+    const error = new Error('At least one document, signer name, signer email and employee identity are required.');
     error.statusCode = 400;
     throw error;
   }
@@ -66,7 +72,17 @@ export async function createDocusignEnvelope(payload = {}) {
       documents,
       emailSubject,
       emailBlurb,
+      customFields:{textCustomFields:[{name:'operationalHubUserId',show:'false',required:'true',value:employeeUserId}]},
       recipients: { signers: [{ email: signerEmail, name: signerName, recipientId: '1', routingOrder: '1' }] },
+      ...(config.connectUrl?{eventNotification:{
+        url:config.connectUrl,
+        requireAcknowledgment:'true',
+        loggingEnabled:'true',
+        includeHMAC:config.hmacSecret?'true':'false',
+        deliveryMode:'SIM',
+        envelopeEvents:[{envelopeEventStatusCode:'completed',includeDocuments:'false'}],
+        eventData:{version:'restv2.1',format:'json',includeData:['custom_fields']},
+      }}:{}),
       status: 'created',
     }),
   });
@@ -81,8 +97,24 @@ export async function createDocusignEnvelope(payload = {}) {
     status: result.status || 'created',
     signerName,
     signerEmail,
+    employeeUserId,
     documentCount: documents.length,
     environment: config.environment,
     createdAt: new Date().toISOString(),
   };
+}
+
+export function verifyDocusignConnectSignature(rawBody,signature){
+  const config=configuration();if(!config.hmacSecret||!signature)return false;
+  const expected=createHmac('sha256',config.hmacSecret).update(rawBody).digest('base64');
+  const provided=String(Array.isArray(signature)?signature[0]:signature).trim();
+  const expectedBytes=Buffer.from(expected);const providedBytes=Buffer.from(provided);
+  return expectedBytes.length===providedBytes.length&&timingSafeEqual(expectedBytes,providedBytes);
+}
+
+export async function downloadDocusignCombinedDocument(envelopeId){
+  const config=configuration();if(!config.connected){const error=new Error('DocuSign is not connected.');error.statusCode=503;throw error}
+  const response=await fetch(`${config.basePath}/v2.1/accounts/${encodeURIComponent(config.accountId)}/envelopes/${encodeURIComponent(String(envelopeId))}/documents/combined`,{headers:{authorization:`Bearer ${config.accessToken}`,accept:'application/pdf'}});
+  if(!response.ok){const detail=await response.text().catch(()=> '');const error=new Error(detail||'DocuSign signed document download failed.');error.statusCode=response.status;throw error}
+  return {bytes:Buffer.from(await response.arrayBuffer()),type:response.headers.get('content-type')||'application/pdf'};
 }

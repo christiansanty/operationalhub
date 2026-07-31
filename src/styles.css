@@ -251,3 +251,14 @@ th{font-size:15px;padding:13px 16px}td{font-size:16px;padding:16px}.employee-cel
 .certificate-photo{position:absolute;top:26px;right:30px;width:86px;height:86px;border:4px solid #fff;border-radius:18px;object-fit:cover;box-shadow:0 8px 22px rgba(15,23,42,.18)}
 .owned-applications-grid article.seven .owned-app-logo{background:#08c2e8;object-fit:cover;object-position:center 52%}
 @media(max-width:620px){.employee-photo-signin{grid-template-columns:1fr}.certificate-photo{width:68px;height:68px;top:18px;right:18px}}
+
+/* One contextual search surface on every Hub section. */
+.section-aware-search{width:min(520px,calc(100vw - 36px));max-height:min(620px,calc(100vh - 96px));overflow:auto}
+.search-popover>button.section-result{align-items:flex-start;border-bottom:1px solid #edf0f4;padding:12px 10px}
+.search-popover>button.section-result>span{display:block;min-width:0;flex:1}
+.search-popover>button.section-result strong,.search-popover>button.section-result small{display:block}
+.search-popover>button.section-result strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search-popover>button.section-result small{margin-top:4px;color:#6b7788;font-size:13px;line-height:1.35}
+.search-popover>button.section-result b{align-self:center;border-radius:999px;background:#eaf1ff;color:#1d4ed8;padding:5px 8px;font-size:12px}
+.section-search-hit{animation:sectionSearchHit 1.8s ease!important;scroll-margin-top:100px}
+@keyframes sectionSearchHit{0%,100%{outline:0 solid rgba(37,99,235,0);box-shadow:inherit}20%,72%{outline:4px solid rgba(37,99,235,.22);box-shadow:0 14px 36px rgba(37,99,235,.16)}}
