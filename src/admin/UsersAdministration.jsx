@@ -18,6 +18,7 @@ const baseModules = isEn => [
   { id:'protocols', label:isEn ? 'Operational Protocols' : 'Protocolos Operacionales', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'licenses', label:'Licenses', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'doctor-licenses', label:isEn ? 'Doctor Licenses / ACA' : 'Licencias de doctores / ACA', group:isEn ? 'Operations' : 'Operaciones' },
+  { id:'credentialing', label:isEn ? 'Credentialing' : 'Credencialización', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'contracting', label:'Contracting', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'academy', label:'Eastern Medical Academy', group:isEn ? 'People' : 'Personas' },
   { id:'human-resources', label:isEn ? 'Human Resources' : 'Recursos Humanos', group:isEn ? 'People' : 'Personas' },

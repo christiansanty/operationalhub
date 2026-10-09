@@ -9,10 +9,16 @@ import { getAcademyWelcomeVideoStatus, saveAcademyWelcomeVideo, streamAcademyWel
 import { createInventoryRequest, decideInventoryRequest, listInventoryRequests } from './inventory-store.mjs';
 import { createDoctorDocument, getDoctorDocument, listDoctorDocuments } from './license-store.mjs';
 import { claimNextAcaRpaCheck, completeAcaRpaCheck, createAcaRpaCheck, getAcaIntegrationStatus, importAcaRecords, listAcaRecords, listAcaRpaChecks } from './aca-store.mjs';
-import { getOperationalAttachment, getOperationalSnapshot } from './operational-airtable-store.mjs';
+import { getOperationalAttachment, getOperationalSnapshot, updateOperationalContractStatus } from './operational-airtable-store.mjs';
 import { syncOperationalAirtable } from './operational-airtable-sync.mjs';
 import { getAiEngineStatus, runOperationalAi } from './ai-engine.mjs';
 import { createHrPackage, deleteHrPackage, getHrPackage, listHrPackages } from './hr-package-store.mjs';
+import { getHrPackageEmailStatus, sendHrPackageEmail } from './hr-package-email.mjs';
+import {
+  archiveHrPackageReturn, createHrPackageWorkflow, findHrPackageReturnByExternalReference,
+  findHrPackageWorkflowByExternalReference, getHrPackageReturn, getPublicHrPackageWorkflow,
+  listHrPackageWorkflows, markHrPackageReturnAssigned, readHrPackageReturn, updateHrPackageWorkflow,
+} from './hr-package-workflow-store.mjs';
 import {
   archiveHrDocument, createHrDocumentRequest, deleteHrDossierDocument, findHrDocumentByExternalReference,
   findHrDocumentRequestsByExternalReference, findHrEmployeeClassification, getHrDossierDocument, getHrDocumentRequest,
@@ -48,7 +54,7 @@ function accessToken(request) {
 
 const permissionRank = { none:0, view:1, manage:2 };
 const operationalPermissionKeys = [
-  'dashboard', 'contracting', 'licenses', 'doctor-licenses', 'human-resources',
+  'dashboard', 'contracting', 'credentialing', 'licenses', 'doctor-licenses', 'human-resources',
   'entity-medical', 'entity-care305', 'entity-aesthetics', 'entity-seven', 'entity-research',
 ];
 
@@ -79,11 +85,12 @@ function academyRecordActor(request,learnerId,required='view'){
 function filteredOperationalSnapshot(actor){
   const snapshot=getOperationalSnapshot();
   if(actor?.role==='owner'||actor?.role==='admin'||actor?.scope==='full')return snapshot;
-  const broadProviderAccess=hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['doctor-licenses','licenses']);
+  const canCredentialing=hasModuleAccess(actor,'credentialing');
+  const broadProviderAccess=hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['doctor-licenses','licenses'])||canCredentialing;
   const canViewOwnProvider=hasModuleAccess(actor,'human-resources');
-  const canContracts=hasModuleAccess(actor,'contracting');
+  const canContracts=hasModuleAccess(actor,['contracting','credentialing']);
   const canLicenses=hasModuleAccess(actor,['licenses','doctor-licenses']);
-  const canEntities=hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research']);
+  const canEntities=hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research'])||canCredentialing||hasModuleAccess(actor,'contracting');
   const entityProviderAccess=hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics','entity-research']);
   const ownProviders=canViewOwnProvider?snapshot.providers.filter(item=>String(item.email||'').toLowerCase()===String(actor.email||'').toLowerCase()):[];
   const entityProviderSummaries=entityProviderAccess?snapshot.providers.filter(item=>{
@@ -184,6 +191,23 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url, 'http://localhost');
     if (request.method === 'GET' && url.pathname === '/api/health') return json(response, 200, { ok: true, service: 'operational-hub-backend' });
     if (request.method === 'GET' && url.pathname === '/api/auth/status') return json(response, 200, getAccessSystemStatus());
+    if (request.method === 'GET' && /^\/api\/hr\/package-portal\/[^/]+\/templates\/[^/]+\/file$/.test(url.pathname)) {
+      const parts=url.pathname.split('/');const token=decodeURIComponent(parts[4]);const packageId=decodeURIComponent(parts[6]);const workflow=await getPublicHrPackageWorkflow(token);
+      if(!workflow||workflow.expired||workflow.status==='assigned'||!workflow.packageIds.includes(packageId))return json(response,404,{error:'Employee Package document is not available'});
+      const packageRecord=await getHrPackage(packageId);if(!packageRecord||await access(packageRecord.filePath).then(()=>false).catch(()=>true))return json(response,404,{error:'Employee Package document not found'});
+      const safeName=packageRecord.filename.replace(/["\r\n]/g,'_');response.writeHead(200,{'content-type':packageRecord.type,'content-disposition':`attachment; filename="${safeName}"`,'cache-control':'private, no-store'});
+      return createReadStream(packageRecord.filePath).pipe(response);
+    }
+    if (request.method === 'POST' && /^\/api\/hr\/package-portal\/[^/]+\/returns$/.test(url.pathname)) {
+      const token=decodeURIComponent(url.pathname.split('/')[4]);const workflow=await getPublicHrPackageWorkflow(token);
+      if(!workflow)return json(response,404,{error:'Employee Package link not found'});if(workflow.expired)return json(response,410,{error:'This Employee Package link has expired'});
+      return json(response,201,{document:await archiveHrPackageReturn(workflow.id,await readJson(request,42*1024*1024),'candidate-portal')});
+    }
+    if (request.method === 'GET' && /^\/api\/hr\/package-portal\/[^/]+$/.test(url.pathname)) {
+      const token=decodeURIComponent(url.pathname.split('/')[4]);const workflow=await getPublicHrPackageWorkflow(token);
+      if(!workflow)return json(response,404,{error:'Employee Package link not found'});
+      return json(response,200,{workflow:{candidateName:workflow.candidateName,candidateEmail:workflow.candidateEmail,deliveryMethod:workflow.deliveryMethod,status:workflow.status,subject:workflow.subject,message:workflow.message,dueAt:workflow.dueAt,expiresAt:workflow.expiresAt,expired:workflow.expired,assignedAt:workflow.assignedAt,packages:workflow.packages.map(item=>({...item,fileUrl:`/api/hr/package-portal/${encodeURIComponent(token)}/templates/${encodeURIComponent(item.id)}/file`})),returns:workflow.returns.map(item=>({id:item.id,filename:item.filename,type:item.type,size:item.size,status:item.status,receivedAt:item.receivedAt}))}});
+    }
     if (request.method === 'GET' && url.pathname === '/api/auth/session') {
       const session=resolveAccessSession(accessToken(request));
       return json(response,session?200:401,{session});
@@ -296,6 +320,16 @@ const server = createServer(async (request, response) => {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,operationalPermissionKeys))return json(response,403,{error:'Operational data access required'});
       return json(response, 200, filteredOperationalSnapshot(actor));
     }
+    if (request.method === 'PATCH' && /^\/api\/operational\/contracts\/[^/]+\/status$/.test(url.pathname)) {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'contracting','manage'))return json(response,403,{error:'Contracting Manage access required'});
+      const recordId=decodeURIComponent(url.pathname.split('/')[4]);
+      return json(response,200,{contract:updateOperationalContractStatus(recordId,(await readJson(request)).status,actor.id)});
+    }
+    if (request.method === 'POST' && url.pathname === '/api/operational/airtable/refresh') {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,['contracting','credentialing'],'manage'))return json(response,403,{error:'Contracting or Credentialing Manage access required'});
+      await syncOperationalAirtable();
+      return json(response,200,{ok:true,snapshot:filteredOperationalSnapshot(actor)});
+    }
     if (request.method === 'GET' && url.pathname === '/api/hr/me/dossier') {
       const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});
       const user=listAccessUsers().find(item=>item.id===actor.id);if(!user)return json(response,404,{error:'Employee record not found'});
@@ -373,6 +407,48 @@ const server = createServer(async (request, response) => {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
       const deleted=await deleteHrDossierDocument(decodeURIComponent(url.pathname.split('/')[4]));return json(response,deleted?200:404,{deleted});
     }
+    if (request.method === 'GET' && url.pathname === '/api/hr/package-workflows') {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
+      return json(response,200,{workflows:await listHrPackageWorkflows(),email:getHrPackageEmailStatus(),docusign:getDocusignStatus()});
+    }
+    if (request.method === 'POST' && url.pathname === '/api/hr/package-workflows') {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
+      const body=await readJson(request,512*1024);const method=body.deliveryMethod==='docusign'?'docusign':'portal';
+      if(method==='docusign'){const status=getDocusignStatus();if(!status.connected||!status.webhookReady)return json(response,503,{error:'DocuSign account, Connect callback and HMAC must be configured before sending a future-employee package'});}
+      const created=await createHrPackageWorkflow({...body,deliveryMethod:method},actor.id);const portalUrl=`${requestBaseUrl(request)}/?employee_package=${encodeURIComponent(created.token)}`;
+      if(method==='docusign'){
+        try{
+          const envelope=await createDocusignEnvelope({packageIds:created.workflow.packageIds,workflowId:created.workflow.id,signerName:created.workflow.candidateName,signerEmail:created.workflow.candidateEmail,emailSubject:created.workflow.subject,emailBlurb:created.workflow.message});
+          const workflow=updateHrPackageWorkflow(created.workflow.id,{status:'draft',externalReference:envelope.envelopeId});
+          return json(response,201,{workflow:{...workflow,packages:created.workflow.packages},envelope,portalUrl:''});
+        }catch(error){updateHrPackageWorkflow(created.workflow.id,{status:'failed'});throw error}
+      }
+      const delivery=await sendHrPackageEmail({candidateName:created.workflow.candidateName,candidateEmail:created.workflow.candidateEmail,portalUrl,dueAt:created.workflow.dueAt,subject:created.workflow.subject,message:created.workflow.message,workflowId:created.workflow.id});
+      const workflow=updateHrPackageWorkflow(created.workflow.id,{status:delivery.delivered?'sent':'prepared',emailDeliveryId:delivery.deliveryId||'',sentAt:delivery.delivered});
+      return json(response,201,{workflow:{...workflow,packages:created.workflow.packages},delivery,portalUrl});
+    }
+    if (request.method === 'POST' && /^\/api\/hr\/package-workflows\/[^/]+\/assign$/.test(url.pathname)) {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
+      const workflowId=decodeURIComponent(url.pathname.split('/')[4]);const body=await readJson(request);const employeeKey=String(body.employeeKey||'').trim();
+      const knownUser=listAccessUsers().some(item=>item.id===employeeKey);const knownProvider=getOperationalSnapshot().providers.some(item=>item.recordId===employeeKey);
+      if(!knownUser&&!knownProvider)return json(response,404,{error:'Employee record not found'});
+      const workflow=(await listHrPackageWorkflows()).find(item=>item.id===workflowId);if(!workflow)return json(response,404,{error:'Employee Package workflow not found'});
+      const pending=workflow.returns.filter(item=>item.status!=='assigned');if(!pending.length)return json(response,409,{error:'No returned documents are waiting for assignment'});
+      const documents=[];
+      for(const item of pending){
+        const returned=await readHrPackageReturn(item.id);if(!returned)continue;
+        documents.push(await archiveHrDocument(employeeKey,{filename:returned.filename,type:returned.type,category:'employee-package',externalReference:workflow.id,base64:returned.bytes.toString('base64')},actor.id,'employee-package-assignment'));
+        markHrPackageReturnAssigned(item.id,employeeKey,actor.id);
+      }
+      const updated=(await listHrPackageWorkflows()).find(item=>item.id===workflowId);
+      return json(response,200,{workflow:updated,documents});
+    }
+    if (request.method === 'GET' && /^\/api\/hr\/package-returns\/[^/]+\/file$/.test(url.pathname)) {
+      const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
+      const record=getHrPackageReturn(decodeURIComponent(url.pathname.split('/')[4]));if(!record||await access(record.file_path).then(()=>false).catch(()=>true))return json(response,404,{error:'Returned Employee Package document not found'});
+      const safeName=record.filename.replace(/["\r\n]/g,'_');response.writeHead(200,{'content-type':record.content_type,'content-disposition':`inline; filename="${safeName}"`,'cache-control':'private, no-store'});
+      return createReadStream(record.file_path).pipe(response);
+    }
     if (request.method === 'GET' && url.pathname === '/api/hr/packages') {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
       return json(response, 200, { packages:await listHrPackages() });
@@ -403,11 +479,19 @@ const server = createServer(async (request, response) => {
       if(!envelopeId)return json(response,202,{acknowledged:true,ignored:'Envelope ID missing'});
       if(status!=='completed'&&!eventName.includes('completed'))return json(response,202,{acknowledged:true,envelopeId,status:status||eventName});
       const assignedRequests=findHrDocumentRequestsByExternalReference(envelopeId);
-      if(!assignedRequests.length)return json(response,202,{acknowledged:true,envelopeId,ignored:'Envelope is not assigned to an Operational Hub employee'});
-      const existing=findHrDocumentByExternalReference(envelopeId);if(existing)return json(response,200,{acknowledged:true,envelopeId,document:existing,duplicate:true});
-      const signed=await downloadDocusignCombinedDocument(envelopeId);const employeeId=assignedRequests[0].userId;
-      const document=await archiveHrDocument(employeeId,{filename:`DocuSign-${envelopeId}-completed.pdf`,type:signed.type,category:'employee-package',externalReference:envelopeId,base64:signed.bytes.toString('base64')},'docusign-connect','docusign-completed');
-      return json(response,200,{acknowledged:true,envelopeId,document});
+      if(assignedRequests.length){
+        const existing=findHrDocumentByExternalReference(envelopeId);if(existing)return json(response,200,{acknowledged:true,envelopeId,document:existing,duplicate:true});
+        const signed=await downloadDocusignCombinedDocument(envelopeId);const employeeId=assignedRequests[0].userId;
+        const document=await archiveHrDocument(employeeId,{filename:`DocuSign-${envelopeId}-completed.pdf`,type:signed.type,category:'employee-package',externalReference:envelopeId,base64:signed.bytes.toString('base64')},'docusign-connect','docusign-completed');
+        return json(response,200,{acknowledged:true,envelopeId,document});
+      }
+      const workflow=findHrPackageWorkflowByExternalReference(envelopeId);
+      if(!workflow)return json(response,202,{acknowledged:true,envelopeId,ignored:'Envelope is not linked to an Operational Hub onboarding workflow'});
+      const existingReturn=findHrPackageReturnByExternalReference(envelopeId);if(existingReturn)return json(response,200,{acknowledged:true,envelopeId,document:existingReturn,duplicate:true});
+      const signed=await downloadDocusignCombinedDocument(envelopeId);
+      const document=await archiveHrPackageReturn(workflow.id,{filename:`DocuSign-${envelopeId}-completed.pdf`,type:signed.type,externalReference:envelopeId,base64:signed.bytes.toString('base64')},'docusign-completed');
+      updateHrPackageWorkflow(workflow.id,{status:'completed',completedAt:true});
+      return json(response,200,{acknowledged:true,envelopeId,document,workflowId:workflow.id});
     }
     if (request.method === 'GET' && url.pathname === '/api/integrations/docusign/status') {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'human-resources','manage'))return json(response,403,{error:'Human Resources Manage access required'});
@@ -434,7 +518,7 @@ const server = createServer(async (request, response) => {
       if(!attachment||await access(attachment.filePath).then(()=>false).catch(()=>true))return json(response,404,{error:'Attachment not found'});
       const actor=requestIdentity(request);const attachmentKeys=attachment.permissionKeys||operationalPermissionKeys;const isHrAttachment=attachmentKeys.includes('human-resources');const ownHrAttachment=isHrAttachment&&attachment.ownerEmail&&String(attachment.ownerEmail).toLowerCase()===String(actor?.email||'').toLowerCase()&&hasModuleAccess(actor,'human-resources');
       const nonHrKeys=attachmentKeys.filter(key=>key!=='human-resources');
-      const privilegedHrAttachment=isHrAttachment&&(hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['licenses','doctor-licenses']));
+      const privilegedHrAttachment=isHrAttachment&&(hasModuleAccess(actor,'human-resources','manage')||hasModuleAccess(actor,['licenses','doctor-licenses','credentialing']));
       if(isHrAttachment?!ownHrAttachment&&!privilegedHrAttachment:!hasModuleAccess(actor,nonHrKeys))return json(response,403,{error:'Attachment access required'});
       const safeName=attachment.filename.replace(/["\r\n]/g,'_');
       response.writeHead(200,{'content-type':attachment.type||'application/octet-stream','content-disposition':`inline; filename="${safeName}"`,'cache-control':'private, max-age=3600'});

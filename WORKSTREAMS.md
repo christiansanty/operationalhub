@@ -1,15 +1,16 @@
 # Operational Hub — Shared Project
 
-Both Codex chats work in this same application and filesystem. The product name is **Operational Hub**. Eastern Medical Academy is one module inside the Hub.
+The product name is **Operational Hub**. Seven Students is a separate learning application that Operational Hub may launch as an internal module.
 
 ## Active chats
 
-### Operational Hub — Academy & Training Data
+### Seven Students — Academy & Training Data
 
-- Owns the Eastern Medical Academy module.
+- Source project: `/Users/christiandominguez/Documents/Codex/projects/seven-students`
+- Owns the Seven Students learning application.
 - Owns `TRAININGS - Learning Center` extraction and catalog generation.
 - Owns courses, lessons, assessments, training resources and certificates.
-- Primary generated data: `src/data/airtableTraining.js`.
+- Primary generated data: `seven-students/src/data/airtableTraining.js`.
 
 ### Operational Hub — Personal, Licenses & Staff
 
@@ -31,4 +32,4 @@ Both Codex chats work in this same application and filesystem. The product name 
 - Product name: `Operational Hub`
 - Package name: `operational-hub`
 
-Operational Hub is now an independent Codex project. The original `eastern-medical-academy` checkout is retained only as a migration fallback until the replacement chats are verified.
+Operational Hub is an independent Codex project. Seven Students is the canonical project for Academy training code; no Academy code should be added to Seven Insurance or mixed into the Operational Hub shell.

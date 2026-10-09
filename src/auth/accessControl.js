@@ -7,7 +7,7 @@ export const pagePermissionKey = page => {
   if (['academy', 'learning', 'systems', 'certificates', 'team'].includes(page)) return 'academy';
   return ({
     hub:'dashboard', leads:'leads', protocols:'protocols', licenses:'licenses',
-    aca:'doctor-licenses', 'doctor-licenses':'doctor-licenses', contracting:'contracting',
+    aca:'doctor-licenses', 'doctor-licenses':'doctor-licenses', contracting:'contracting', credentialing:'credentialing',
     staff:'human-resources', users:'admin-users',
   })[page] || null;
 };
@@ -46,7 +46,7 @@ export const canSessionAccessApplication = (session, applicationId) =>
 
 export const accessiblePages = [
   'hub', 'medical-overview', 'care305-overview', 'aesthetics-overview', 'seven-overview',
-  'research-overview', 'leads', 'protocols', 'licenses', 'doctor-licenses', 'contracting',
+  'research-overview', 'leads', 'protocols', 'licenses', 'doctor-licenses', 'credentialing', 'contracting',
   'staff', 'academy', 'users', 'roadmap',
 ];
 

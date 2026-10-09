@@ -13,7 +13,7 @@ const sessionLifetimeMs = 7 * 24 * 60 * 60 * 1000;
 const permissionValues = new Set(['none', 'view', 'manage']);
 const permissionKeys = new Set([
   'dashboard','entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research',
-  'leads','protocols','licenses','doctor-licenses','contracting','academy','human-resources','personnel','admin-users',
+  'leads','protocols','licenses','doctor-licenses','contracting','credentialing','academy','human-resources','personnel','admin-users',
   'app-seven-insurance','app-scribex-health','app-carecheck360','app-financial-hub','app-marketing-suite','app-executive-assistant',
 ]);
 const accessProfiles = new Set(['academy', 'custom', 'admin', 'owner']);

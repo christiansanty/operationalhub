@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { mkdirSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import {
   emmsoContractSnapshot,
@@ -8,10 +9,13 @@ import {
 } from '../src/data/emmsoOperational.js';
 
 const privateRoot=path.resolve('private');
-const databasePath=path.join(privateRoot,'operational-hub.sqlite');
+const databasePath=process.env.OPERATIONAL_HUB_DATABASE_PATH
+  ? path.resolve(process.env.OPERATIONAL_HUB_DATABASE_PATH)
+  : path.join(privateRoot,'operational-hub.sqlite');
 const attachmentRoot=path.join(privateRoot,'operational-airtable-attachments');
 
 function openDatabase(){
+  mkdirSync(path.dirname(databasePath),{recursive:true,mode:0o700});
   const database=new DatabaseSync(databasePath);
   database.exec(`
     PRAGMA journal_mode = WAL;
@@ -81,6 +85,12 @@ function openDatabase(){
       source_record_url TEXT,
       synced_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS operational_status_overrides (
+      record_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      updated_by TEXT NOT NULL
+    );
   `);
   return database;
 }
@@ -91,6 +101,24 @@ const mapContract=row=>({id:row.record_id,recordId:row.record_id,insurance:row.i
 const mapLicense=row=>({recordId:row.record_id,title:row.title,entity:row.entity||'',type:row.category||'',number:row.license_number||'',status:row.status||'',expires:row.expires_on||'',owner:row.owner||'',fields:parseJson(row.fields_json,{}),attachments:parseJson(row.attachments_json,[]),sourceRecordUrl:row.source_record_url||'',source:'EM-MSO · LICENSING'});
 const mapEntity=row=>({recordId:row.record_id,tableName:row.table_name,title:row.title,fields:parseJson(row.fields_json,{}),attachments:parseJson(row.attachments_json,[]),sourceRecordUrl:row.source_record_url||''});
 
+const entityStatus=item=>{
+  const fields=item.fields||{};
+  const match=Object.entries(fields).find(([name])=>name.trim().toLowerCase()==='status');
+  return String(match?.[1]||'').trim().toLowerCase();
+};
+
+const withStatusOverride=(item,overrides)=>{
+  const override=overrides.get(item.recordId);
+  const sourceStatus=item.status||entityStatus(item)||'unknown';
+  return {
+    ...item,
+    status:override?.status||sourceStatus,
+    sourceStatus,
+    statusUpdatedAt:override?.updated_at||'',
+    statusUpdatedBy:override?.updated_by||'',
+  };
+};
+
 export function getOperationalSnapshot(){
   const database=openDatabase();
   try{
@@ -99,12 +127,13 @@ export function getOperationalSnapshot(){
     const storedContracts=database.prepare('SELECT * FROM operational_contracts ORDER BY insurance').all().map(mapContract);
     const storedLicenses=database.prepare('SELECT * FROM operational_licenses ORDER BY title').all().map(mapLicense);
     const entities=database.prepare('SELECT * FROM operational_entities ORDER BY table_name, title').all().map(mapEntity);
+    const overrides=new Map(database.prepare('SELECT * FROM operational_status_overrides').all().map(row=>[row.record_id,row]));
     // Keep the verified EM-MSO snapshot on the server only until the protected
     // Airtable sync populates SQLite. The client bundle never imports this data.
     const providers=storedProviders.length?storedProviders:emmsoProviderSnapshot;
-    const contracts=storedContracts.length?storedContracts:emmsoContractSnapshot;
+    const contracts=(storedContracts.length?storedContracts:emmsoContractSnapshot).map(item=>withStatusOverride(item,overrides));
     const licenses=storedLicenses.length?storedLicenses:emmsoLicenseSnapshot;
-    return {status:statusRow?{source:statusRow.source_name,baseId:statusRow.base_id,state:statusRow.state,message:statusRow.message||'',syncedAt:statusRow.synced_at||'',tableCounts:parseJson(statusRow.table_counts_json,{})}:emmsoSourceStatus,providers,contracts,licenses,entities};
+    return {status:statusRow?{source:statusRow.source_name,baseId:statusRow.base_id,state:statusRow.state,message:statusRow.message||'',syncedAt:statusRow.synced_at||'',tableCounts:parseJson(statusRow.table_counts_json,{})}:emmsoSourceStatus,providers,contracts,licenses,entities:entities.map(item=>withStatusOverride(item,overrides))};
   }finally{database.close()}
 }
 
@@ -133,6 +162,24 @@ export function setOperationalSyncError(message){
   try{database.prepare('INSERT INTO operational_airtable_status (id,base_id,source_name,state,message,synced_at,table_counts_json) VALUES (1,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET state=excluded.state,message=excluded.message').run('appCtkLVbC33nRuh1','Airtable · EM-MSO','permission-required',String(message||'Synchronization failed').slice(0,1000),'','{}')}finally{database.close()}
 }
 
+export function updateOperationalContractStatus(recordId,status,actorId){
+  const normalized=String(status||'').trim().toLowerCase();
+  if(!['active','inactive'].includes(normalized)){
+    const error=new Error('Contract status must be active or inactive.');error.statusCode=400;throw error;
+  }
+  const database=openDatabase();
+  try{
+    const contract=database.prepare('SELECT record_id FROM operational_contracts WHERE record_id = ?').get(recordId);
+    const entity=database.prepare('SELECT record_id, table_name FROM operational_entities WHERE record_id = ?').get(recordId);
+    const fallback=emmsoContractSnapshot.some(item=>String(item.recordId||item.id)===String(recordId));
+    const allowedEntityTables=new Set(['EM Center','EM Group','305 MED CARE','EM FM']);
+    if(!contract&&!fallback&&(!entity||!allowedEntityTables.has(entity.table_name))){const error=new Error('Contract record not found.');error.statusCode=404;throw error}
+    const updatedAt=new Date().toISOString();
+    database.prepare('INSERT INTO operational_status_overrides (record_id,status,updated_at,updated_by) VALUES (?,?,?,?) ON CONFLICT(record_id) DO UPDATE SET status=excluded.status,updated_at=excluded.updated_at,updated_by=excluded.updated_by').run(recordId,normalized,updatedAt,String(actorId||'unknown'));
+    return {recordId,status:normalized,statusUpdatedAt:updatedAt,statusUpdatedBy:String(actorId||'unknown')};
+  }finally{database.close()}
+}
+
 export function getOperationalAttachment(id){
   const snapshot=getOperationalSnapshot();
   const entityPermission=item=>{
@@ -143,11 +190,12 @@ export function getOperationalAttachment(id){
     if(value.includes('305'))return 'entity-care305';
     return 'entity-medical';
   };
+  const contractEntityTables=new Set(['EM Center','EM Group','305 MED CARE','EM FM']);
   const all=[
-    ...snapshot.providers.flatMap(item=>(item.sourceAttachments||[]).map(attachment=>({...attachment,ownerEmail:item.email||'',permissionKeys:['human-resources','doctor-licenses','licenses',item.entity==='Eastern Medical Research'?'entity-research':'entity-medical']}))),
-    ...snapshot.contracts.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:['contracting']}))),
+    ...snapshot.providers.flatMap(item=>(item.sourceAttachments||[]).map(attachment=>({...attachment,ownerEmail:item.email||'',permissionKeys:['human-resources','doctor-licenses','licenses','credentialing',item.entity==='Eastern Medical Research'?'entity-research':'entity-medical']}))),
+    ...snapshot.contracts.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:['contracting','credentialing']}))),
     ...snapshot.licenses.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:['licenses','doctor-licenses']}))),
-    ...snapshot.entities.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:[entityPermission(item)]}))),
+    ...snapshot.entities.flatMap(item=>(item.attachments||[]).map(attachment=>({...attachment,permissionKeys:contractEntityTables.has(item.tableName)?['contracting','credentialing',entityPermission(item)]:[entityPermission(item)]}))),
   ];
   const attachment=all.find(item=>item.id===id);
   if(!attachment?.relativePath)return null;

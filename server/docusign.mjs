@@ -37,10 +37,11 @@ export async function createDocusignEnvelope(payload = {}) {
   const signerName = String(payload.signerName || '').trim();
   const signerEmail = String(payload.signerEmail || '').trim();
   const employeeUserId = String(payload.employeeUserId || '').trim().slice(0, 100);
+  const workflowId = String(payload.workflowId || '').trim().slice(0, 100);
   const emailSubject = String(payload.emailSubject || 'Employee Package for signature').trim().slice(0, 100);
   const emailBlurb = String(payload.emailBlurb || '').trim().slice(0, 10000);
-  if (!packageIds.length || !signerName || !signerEmail || !employeeUserId) {
-    const error = new Error('At least one document, signer name, signer email and employee identity are required.');
+  if (!packageIds.length || !signerName || !signerEmail || (!employeeUserId&&!workflowId)) {
+    const error = new Error('At least one document, signer name, signer email and an employee or onboarding workflow identity are required.');
     error.statusCode = 400;
     throw error;
   }
@@ -72,7 +73,10 @@ export async function createDocusignEnvelope(payload = {}) {
       documents,
       emailSubject,
       emailBlurb,
-      customFields:{textCustomFields:[{name:'operationalHubUserId',show:'false',required:'true',value:employeeUserId}]},
+      customFields:{textCustomFields:[
+        ...(employeeUserId?[{name:'operationalHubUserId',show:'false',required:'true',value:employeeUserId}]:[]),
+        ...(workflowId?[{name:'operationalHubPackageWorkflowId',show:'false',required:'true',value:workflowId}]:[]),
+      ]},
       recipients: { signers: [{ email: signerEmail, name: signerName, recipientId: '1', routingOrder: '1' }] },
       ...(config.connectUrl?{eventNotification:{
         url:config.connectUrl,
@@ -98,6 +102,7 @@ export async function createDocusignEnvelope(payload = {}) {
     signerName,
     signerEmail,
     employeeUserId,
+    workflowId,
     documentCount: documents.length,
     environment: config.environment,
     createdAt: new Date().toISOString(),

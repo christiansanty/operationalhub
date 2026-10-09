@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, BadgeCheck, BriefcaseBusiness, Building2, Check,
-  Camera, ChevronDown, ChevronRight, CircleAlert, Clock3, ExternalLink, FileCheck2, FileText, FolderOpen,
-  IdCard, Link2, Mail, Paperclip, PenTool, Search, Send, ShieldCheck, Trash2, Upload, UserRound, Users,
+  Camera, ChevronDown, ChevronRight, CircleAlert, ClipboardCopy, Clock3, ExternalLink, FileCheck2, FileText, FolderOpen,
+  IdCard, Inbox, Link2, Paperclip, PenTool, Search, Send, ShieldCheck, Trash2, Upload, UserRound, Users,
 } from 'lucide-react';
 import './human-resources.css';
 
@@ -112,16 +112,26 @@ async function syncPackageTemplate(template) {
   return { ...template, serverId:payload.package.id };
 }
 
-function EmployeePackageLibrary({ employees, lang }) {
+function EmployeePackageLibrary({ employees, lang, onRefresh }) {
   const isEn = lang === 'en';
-  const eligibleEmployees = employees.filter(employee => employee.accessUserId);
+  const eligibleEmployees = employees.filter(employee => employee.accessUserId || employee.recordId);
   const [templates, setTemplates] = useState([]);
-  const [employeeId, setEmployeeId] = useState('');
-  const [recipient, setRecipient] = useState('');
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [templateUrls, setTemplateUrls] = useState({});
+  const [candidateName,setCandidateName]=useState('');
+  const [candidateEmail,setCandidateEmail]=useState('');
+  const [dueAt,setDueAt]=useState('');
+  const [deliveryMethod,setDeliveryMethod]=useState('portal');
+  const [subject,setSubject]=useState(isEn?'Employee Package · EM Group':'Employee Package · EM Group');
+  const [note,setNote]=useState(isEn?'Human Resources has prepared your onboarding documents. Please complete and return them using the secure link.':'Recursos Humanos preparó tus documentos de onboarding. Complétalos y devuélvelos usando el enlace seguro.');
+  const [workflows,setWorkflows]=useState([]);
+  const [emailStatus,setEmailStatus]=useState({configured:false,provider:'Manual email draft'});
+  const [docusignStatus,setDocusignStatus]=useState({connected:false,webhookReady:false,environment:'demo'});
+  const [busy,setBusy]=useState(false);
+  const [latestPortalUrl,setLatestPortalUrl]=useState('');
+  const loadWorkflows=async()=>{const response=await fetch('/api/hr/package-workflows',{cache:'no-store'});const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Workflow loading failed');setWorkflows(payload.workflows||[]);setEmailStatus(payload.email||{});setDocusignStatus(payload.docusign||{})};
   useEffect(() => { packageStore('readonly', store => store.getAll()).then(async rows => {
     const synchronized = await Promise.all(rows.map(row => syncPackageTemplate(row).catch(() => row)));
     await Promise.all(synchronized.filter(row => row.serverId).map(row => packageStore('readwrite', store => store.put(row))));
@@ -129,14 +139,13 @@ function EmployeePackageLibrary({ employees, lang }) {
     const remotePayload = remoteResponse?.ok ? await remoteResponse.json() : { packages:[] };
     const known = new Set(synchronized.map(row => row.serverId).filter(Boolean));
     const remoteOnly = (remotePayload.packages || []).filter(row => !known.has(row.id)).map(row => ({ id:`server-${row.id}`, serverId:row.id, name:row.filename, type:row.type, size:row.size, updatedAt:row.createdAt }));
-    setTemplates([...synchronized, ...remoteOnly].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));
+    setTemplates([...synchronized, ...remoteOnly].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)));await loadWorkflows();
   }).catch(() => setError(isEn ? 'This browser could not open the package library.' : 'Este navegador no pudo abrir la biblioteca de packages.')); }, [isEn]);
   useEffect(() => {
     const next = Object.fromEntries(templates.filter(template => template.blob).map(template => [template.id, URL.createObjectURL(template.blob)]));
     setTemplateUrls(next);
     return () => Object.values(next).forEach(url => URL.revokeObjectURL(url));
   }, [templates]);
-  const selectedEmployee = eligibleEmployees.find(employee => employee.accessUserId === employeeId);
   const upload = async event => {
     const incoming = [...event.target.files];
     if (!incoming.length) return;
@@ -156,41 +165,51 @@ function EmployeePackageLibrary({ employees, lang }) {
     setTemplates(current => current.filter(item => item.id !== template.id));
     setSelectedFiles(current => current.filter(id => id !== template.id));
   };
-  const chooseEmployee = event => {
-    const id = event.target.value;
-    const employee = eligibleEmployees.find(item => item.accessUserId === id);
-    setEmployeeId(id); setRecipient(employee?.email || ''); setMessage(''); setError('');
-  };
-  const openEmail = async event => {
+  const sendPackage = async event => {
     event.preventDefault();
     const files = templates.filter(template => selectedFiles.includes(template.id));
-    if (!selectedEmployee?.accessUserId || !recipient.trim() || !files.length) { setError(isEn ? 'Select an employee with an access account, enter an email and choose at least one blank document.' : 'Selecciona un empleado con cuenta de acceso, escribe su correo y elige al menos un documento en blanco.'); return; }
+    if (!candidateName.trim() || !candidateEmail.trim() || !files.length) { setError(isEn ? 'Enter the future employee name and email, then choose at least one blank document.' : 'Escribe el nombre y correo del futuro empleado y elige al menos un documento en blanco.'); return; }
     if (files.some(file => !file.serverId)) { setError(isEn ? 'Wait until every selected document is synchronized with the protected server.' : 'Espera a que todos los documentos seleccionados se sincronicen con el servidor protegido.'); return; }
-    const subject = isEn ? 'Employee Package — documents for signature' : 'Employee Package — documentos para firma';
-    const fileList = files.map(file => `• ${file.name}`).join('\n');
-    const body = isEn ? `Hello ${selectedEmployee?.name || ''},\n\nPlease review, complete and sign the following Employee Package documents:\n${fileList}\n\nPlease return the completed documents to Human Resources.\n\nThank you.` : `Hola ${selectedEmployee?.name || ''},\n\nPor favor revisa, completa y firma los siguientes documentos del Employee Package:\n${fileList}\n\nDevuelve los documentos completados a Human Resources.\n\nGracias.`;
+    setBusy(true);setMessage('');setError('');setLatestPortalUrl('');
     try {
-      const response=await fetch(`/api/hr/employees/${encodeURIComponent(selectedEmployee.accessUserId)}/document-requests`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({documents:files.map(file=>({title:file.name,category:'employee-package',packageId:file.serverId,deliveryMethod:'email',description:isEn?'Employee Package assigned for completion and return.':'Employee Package asignado para completar y devolver.'}))})});
-      const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Document assignment failed');
-      window.location.href = `mailto:${encodeURIComponent(recipient.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-      setMessage(isEn ? `${payload.requests?.length||files.length} document request(s) linked to this employee record. Attach the selected files before sending.` : `${payload.requests?.length||files.length} solicitud(es) quedaron vinculadas al expediente del empleado. Adjunta los archivos seleccionados antes de enviar.`);
-      setError('');
-    } catch(requestError){setError(requestError.message|| (isEn?'The package could not be assigned.':'No se pudo asignar el package.'))}
+      const response=await fetch('/api/hr/package-workflows',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({candidateName:candidateName.trim(),candidateEmail:candidateEmail.trim(),packageIds:files.map(file=>file.serverId),deliveryMethod,dueAt,subject,message:note})});
+      const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Employee Package delivery failed');
+      if(payload.portalUrl){setLatestPortalUrl(payload.portalUrl);if(!payload.delivery?.delivered){const body=`${note}\n\n${isEn?'Open, complete and return your secure Employee Package here:':'Abre, completa y devuelve tu Employee Package seguro aquí:'}\n${payload.portalUrl}`;window.location.href=`mailto:${encodeURIComponent(candidateEmail.trim())}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`}}
+      setMessage(deliveryMethod==='docusign'?(isEn?'DocuSign draft created and linked to the onboarding inbox. Open DocuSign, place the required fields and send it.':'Borrador de DocuSign creado y vinculado a la bandeja de onboarding. Abre DocuSign, coloca los campos requeridos y envíalo.'):(payload.delivery?.delivered?(isEn?'Secure Employee Package sent successfully.':'Employee Package seguro enviado correctamente.'):(isEn?'Secure package created. Your email application opened with the personal return link.':'Package seguro creado. Tu aplicación de correo abrió con el enlace personal de devolución.')));
+      setCandidateName('');setCandidateEmail('');setDueAt('');setSelectedFiles([]);await loadWorkflows();
+    } catch(requestError){setError(requestError.message|| (isEn?'The package could not be sent.':'No se pudo enviar el package.'))}finally{setBusy(false)}
   };
+  const copyLatest=async()=>{if(!latestPortalUrl)return;await navigator.clipboard.writeText(latestPortalUrl);setMessage(isEn?'Secure link copied.':'Enlace seguro copiado.')};
+  const assignWorkflow=async(workflow,employeeKey)=>{if(!employeeKey){setError(isEn?'Select the employee record that owns this returned package.':'Selecciona el expediente al que pertenece este package devuelto.');return}setBusy(true);setError('');setMessage('');try{const response=await fetch(`/api/hr/package-workflows/${encodeURIComponent(workflow.id)}/assign`,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({employeeKey})});const payload=await response.json();if(!response.ok)throw new Error(payload.error||'Assignment failed');setMessage(isEn?'The complete package was transferred to the selected employee record.':'El package completo fue transferido al expediente seleccionado.');await Promise.all([loadWorkflows(),onRefresh?.()])}catch(assignError){setError(assignError.message)}finally{setBusy(false)}};
+  const awaitingAssignment=workflows.filter(workflow=>workflow.returns.some(item=>item.status!=='assigned'));
+  const docusignReady=docusignStatus.connected&&docusignStatus.webhookReady;
   return <div className="hr-package-workspace">
     <section className="hr-package-master">
       <header><span><FileCheck2/></span><div><small>MASTER EMPLOYEE PACKAGE</small><h2>{isEn ? 'Blank package documents' : 'Employee Package en blanco'}</h2><p>{isEn ? 'Upload the master forms employees must complete and sign.' : 'Carga los formularios maestros que los empleados deben completar y firmar.'}</p></div><label><Upload/>{isEn ? 'Upload files' : 'Subir archivos'}<input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg" onChange={upload}/></label></header>
       {templates.length ? <div className="hr-master-files">{templates.map(template => { const href=template.serverId ? `/api/hr/packages/${encodeURIComponent(template.serverId)}/file` : templateUrls[template.id] || '#'; return <article key={template.id}><div className="hr-master-file-main"><label className="hr-master-check"><input aria-label={isEn ? `Select ${template.name}` : `Seleccionar ${template.name}`} type="checkbox" checked={selectedFiles.includes(template.id)} onChange={event => setSelectedFiles(current => event.target.checked ? [...current, template.id] : current.filter(id => id !== template.id))}/></label><a className="hr-master-file-link" href={href} target="_blank" rel="noreferrer" title={isEn ? `Open ${template.name}` : `Abrir ${template.name}`}><span className="hr-file-icon"><FileText/></span><div><strong>{template.name}</strong><small>{Math.max(1, Math.round(template.size / 1024))} KB · {new Date(template.updatedAt).toLocaleDateString(isEn ? 'en-US' : 'es-US')}</small></div><Link2/></a></div><a href={href} download={template.name}>{isEn ? 'Download' : 'Descargar'}</a><button className="delete" onClick={() => removeTemplate(template)} aria-label={isEn ? `Delete ${template.name}` : `Eliminar ${template.name}`}><Trash2/></button></article>; })}</div> : <div className="hr-package-upload-empty"><Upload/><strong>{isEn ? 'Upload the first blank Employee Package' : 'Sube el primer Employee Package en blanco'}</strong><p>{isEn ? 'PDF and Office documents are stored in this browser until a protected document service is connected.' : 'Los archivos PDF y Office se guardan en este navegador hasta conectar un servicio documental protegido.'}</p></div>}
     </section>
-    <form className="hr-package-email" onSubmit={openEmail}>
-      <header><span><Mail/></span><div><small>{isEn ? 'OPTIONAL MANUAL DELIVERY' : 'ENVÍO MANUAL OPCIONAL'}</small><h2>{isEn ? 'Send by email only when an administrator chooses it' : 'Enviar por correo solo cuando lo seleccione un administrador'}</h2><p>{isEn ? 'DocuSign is the primary signature workflow. This fallback still creates a tracked request under the employee record.' : 'DocuSign es el flujo principal de firma. Esta alternativa también crea una solicitud rastreada dentro del expediente del empleado.'}</p></div></header>
-      <label>{isEn ? 'Employee' : 'Empleado'}<select value={employeeId} onChange={chooseEmployee} required><option value="">{isEn ? 'Select an employee with access' : 'Selecciona un empleado con acceso'}</option>{eligibleEmployees.map(employee => <option key={employee.accessUserId} value={employee.accessUserId}>{employee.name} · {employee.role}</option>)}</select></label>
-      <label>{isEn ? 'Recipient email' : 'Correo del destinatario'}<input type="email" required value={recipient} onChange={event => setRecipient(event.target.value)} placeholder="employee@company.com"/></label>
+    <form className="hr-package-email hr-package-send" onSubmit={sendPackage}>
+      <header><span><Send/></span><div><small>{isEn ? 'FUTURE EMPLOYEE DELIVERY' : 'ENVÍO AL FUTURO EMPLEADO'}</small><h2>{isEn ? 'Send without creating the employee record first' : 'Enviar sin crear primero el expediente'}</h2><p>{isEn ? 'The completed package returns to the onboarding inbox. Human Resources assigns it to the correct employee afterward.' : 'El package completado regresa a la bandeja de onboarding. Recursos Humanos lo asigna después al empleado correcto.'}</p></div></header>
+      <label>{isEn ? 'Future employee name' : 'Nombre del futuro empleado'}<input required value={candidateName} onChange={event=>setCandidateName(event.target.value)} placeholder={isEn?'Full legal name':'Nombre legal completo'}/></label>
+      <label>{isEn ? 'Recipient email' : 'Correo del destinatario'}<input type="email" required value={candidateEmail} onChange={event => setCandidateEmail(event.target.value)} placeholder="candidate@email.com"/></label>
+      <label>{isEn?'Return deadline':'Fecha límite de devolución'}<input type="date" value={dueAt} onChange={event=>setDueAt(event.target.value)}/></label>
+      <label>{isEn?'Delivery and completion method':'Método de envío y completado'}<select value={deliveryMethod} onChange={event=>setDeliveryMethod(event.target.value)}><option value="portal">{isEn?'Secure portal link':'Enlace de portal seguro'} · {emailStatus.provider}</option><option value="docusign" disabled={!docusignReady}>DocuSign eSignature {!docusignReady?(isEn?'· configuration required':'· requiere configuración'):''}</option></select></label>
+      <label>{isEn?'Email subject':'Asunto del correo'}<input value={subject} onChange={event=>setSubject(event.target.value)} maxLength={140} required/></label>
+      <label>{isEn?'Instructions':'Instrucciones'}<textarea value={note} onChange={event=>setNote(event.target.value)} rows={4}/></label>
       <div className="hr-email-selection"><span>{isEn ? 'Documents selected' : 'Documentos seleccionados'}</span><strong>{selectedFiles.length}</strong></div>
-      <p className="hr-email-note"><CircleAlert/>{isEn ? 'For security, the app opens a draft in your email application. Review the recipient and attach the selected files before pressing Send.' : 'Por seguridad, la app abre un borrador en tu aplicación de correo. Revisa el destinatario y adjunta los archivos seleccionados antes de presionar Enviar.'}</p>
+      <p className="hr-email-note"><ShieldCheck/>{deliveryMethod==='docusign'?(isEn?'The completed DocuSign PDF returns automatically to this onboarding inbox.':'El PDF completado en DocuSign regresa automáticamente a esta bandeja de onboarding.'):(emailStatus.configured?(isEn?'The app sends a personal secure link. The candidate downloads and returns documents through that same page.':'La app envía un enlace seguro personal. El candidato descarga y devuelve los documentos desde esa misma página.'):(isEn?'The secure portal is ready. Until server email is configured, the app opens a manual email draft containing the personal link.':'El portal seguro está listo. Hasta configurar el correo del servidor, la app abre un borrador manual con el enlace personal.'))}</p>
       {error && <p className="hr-package-error">{error}</p>}{message && <p className="hr-package-success"><Check/>{message}</p>}
-      <button className="hr-open-email" type="submit"><Send/>{isEn ? 'Open email draft' : 'Abrir borrador de email'}</button>
+      {latestPortalUrl&&<div className="hr-package-link"><input readOnly value={latestPortalUrl}/><button type="button" onClick={copyLatest}><ClipboardCopy/>{isEn?'Copy link':'Copiar enlace'}</button></div>}
+      <button className="hr-open-email" type="submit" disabled={busy}><Send/>{busy?(isEn?'Preparing…':'Preparando…'):deliveryMethod==='docusign'?(isEn?'Create tracked DocuSign draft':'Crear borrador DocuSign rastreado'):(emailStatus.configured?(isEn?'Send secure package':'Enviar package seguro'):(isEn?'Create link and open email':'Crear enlace y abrir correo'))}</button>
     </form>
+    <section className="hr-package-inbox">
+      <header><span><Inbox/></span><div><small>{isEn?'ONBOARDING INBOX':'BANDEJA DE ONBOARDING'}</small><h2>{isEn?'Returned packages awaiting assignment':'Packages devueltos pendientes de asignación'}</h2><p>{isEn?'Review the returned files, select the matching employee and transfer the complete package into Employees.':'Revisa los archivos devueltos, selecciona el empleado correcto y transfiere el package completo a Empleados.'}</p></div><b>{awaitingAssignment.length}</b></header>
+      {awaitingAssignment.length?<div className="hr-package-inbox-list">{awaitingAssignment.map(workflow=><article key={workflow.id}><div className="hr-package-inbox-person"><span>{String(workflow.candidateName||'').split(/\s+/).slice(0,2).map(part=>part[0]).join('').toUpperCase()}</span><div><strong>{workflow.candidateName}</strong><small>{workflow.candidateEmail} · {workflow.deliveryMethod}</small></div><b>{isEn?'Received':'Recibido'}</b></div><div className="hr-package-inbox-files">{workflow.returns.map(document=><a key={document.id} href={document.fileUrl} target="_blank" rel="noreferrer"><FileText/><span><strong>{document.filename}</strong><small>{new Date(document.receivedAt).toLocaleString(isEn?'en-US':'es-US')}</small></span><ExternalLink/></a>)}</div><form className="hr-package-assign" onSubmit={event=>{event.preventDefault();const employeeKey=event.currentTarget.querySelector('select[name="employeeKey"]')?.value||'';assignWorkflow(workflow,employeeKey)}}><label>{isEn?'Assign package to employee':'Asignar package al empleado'}<select name="employeeKey" defaultValue=""><option value="">{isEn?'Select employee record':'Seleccionar expediente'}</option>{eligibleEmployees.map(employee=>{const key=employee.accessUserId||employee.recordId;return <option key={key} value={key}>{employee.name} · {employee.role||employee.entity}</option>})}</select></label><button type="submit" disabled={busy}><ArrowRight/>{isEn?'Transfer to Employees':'Transferir a Empleados'}</button></form></article>)}</div>:<div className="hr-package-inbox-empty"><Inbox/><strong>{isEn?'No returned package is waiting':'No hay packages devueltos pendientes'}</strong><p>{isEn?'When a future employee returns files or finishes DocuSign, the package will appear here.':'Cuando un futuro empleado devuelva archivos o complete DocuSign, el package aparecerá aquí.'}</p></div>}
+    </section>
+    <section className="hr-package-tracker">
+      <header><span><Clock3/></span><div><small>{isEn?'DELIVERY TRACKER':'RASTREO DE ENVÍOS'}</small><h2>{isEn?'Every Employee Package workflow':'Todos los flujos de Employee Package'}</h2></div><b>{workflows.length}</b></header>
+      {workflows.length?<div>{workflows.map(workflow=><article key={workflow.id}><div><strong>{workflow.candidateName}</strong><small>{workflow.candidateEmail}</small></div><span>{workflow.packages.length} {isEn?'documents':'documentos'}</span><span>{workflow.deliveryMethod==='docusign'?'DocuSign':(emailStatus.configured?'Secure email':'Secure link')}</span><b className={workflow.status}>{workflow.status}</b><time>{new Date(workflow.createdAt).toLocaleDateString(isEn?'en-US':'es-US')}</time></article>)}</div>:<p className="hr-package-inbox-empty">{isEn?'No package has been sent yet.':'Todavía no se ha enviado ningún package.'}</p>}
+    </section>
   </div>;
 }
 
@@ -447,7 +466,7 @@ export default function HumanResources({ lang, employees:sourceEmployees = [], s
     {dossierError&&<p className="hr-document-message">{dossierError}</p>}
     <div className="hr-metrics"><div><Users/><strong>{employees.length}</strong><span>{isEn ? 'Employee records' : 'Expedientes'}</span></div><div><BriefcaseBusiness/><strong>{positions.length}</strong><span>{isEn ? 'Positions in current group' : 'Posiciones del grupo actual'}</span></div><div><Paperclip/><strong>{attached}</strong><span>{isEn ? 'Connected files' : 'Archivos conectados'}</span></div></div>
     <nav className="hr-section-tabs"><button className={section === 'employees' ? 'active' : ''} onClick={() => setSection('employees')}><Users/>{isEn ? 'Employees' : 'Empleados'}</button><button className={section === 'files' ? 'active' : ''} onClick={() => setSection('files')}><FolderOpen/>{isEn ? 'Files' : 'Archivos'}</button><button className={section === 'package' ? 'active' : ''} onClick={() => setSection('package')}><FileCheck2/>Employee Package</button><button className={section === 'docusign' ? 'active' : ''} onClick={() => setSection('docusign')}><PenTool/>DocuSign</button></nav>
-    {section === 'docusign' ? <DocuSignWorkspace employees={employees} lang={lang}/> : section === 'package' ? <EmployeePackageLibrary employees={employees} lang={lang}/> : section === 'files' ? <HumanResourcesFiles employees={employees} lang={lang}/> : <>
+    {section === 'docusign' ? <DocuSignWorkspace employees={employees} lang={lang}/> : section === 'package' ? <EmployeePackageLibrary employees={employees} lang={lang} onRefresh={loadDossiers}/> : section === 'files' ? <HumanResourcesFiles employees={employees} lang={lang}/> : <>
     <nav className="hr-workforce-tabs"><button className={workforce==='operational'?'active':''} onClick={()=>{setWorkforce('operational');setPosition('all')}}><BriefcaseBusiness/><span><strong>{isEn?'Operational personnel':'Personal operacional'}</strong><small>{employees.filter(employee=>!isClinicalEmployee(employee)).length} {isEn?'employees':'empleados'}</small></span></button><button className={workforce==='clinical'?'active':''} onClick={()=>{setWorkforce('clinical');setPosition('all')}}><IdCard/><span><strong>{isEn?'Clinical personnel':'Personal clínico'}</strong><small>{employees.filter(isClinicalEmployee).length} {isEn?'employees':'empleados'}</small></span></button></nav>
     <div className="hr-toolbar"><label><Search/><input value={query} onChange={event => setQuery(event.target.value)} placeholder={isEn ? 'Search employee, position or entity…' : 'Buscar empleado, posición o entidad…'}/></label><label className="hr-position-select"><BriefcaseBusiness/><select value={position} onChange={event => setPosition(event.target.value)}><option value="all">{isEn ? 'All positions' : 'Todas las posiciones'}</option>{positions.map(item => <option key={item} value={item}>{item}</option>)}</select><ChevronDown/></label></div>
     <div className="hr-position-groups">{groups.map(([role, members]) => <section key={role}><header><div><span>{isEn ? 'POSITION' : 'POSICIÓN'}</span><h2>{role}</h2></div><b>{members.length} {members.length === 1 ? (isEn ? 'employee' : 'empleado') : (isEn ? 'employees' : 'empleados')}</b></header><div>{members.map(employee => { const files = classifyFiles(employee); const percent = completeness(employee, files); const employmentStatus = getStatus(employee); return <article className="hr-directory-row" key={employeeKey(employee)}><button className="hr-directory-open" onClick={() => setSelected(employee)}><span className="hr-directory-avatar">{employee.initials}</span><div className="hr-directory-person"><strong>{employee.name}</strong><span>{employee.entity || (isEn ? 'Entity pending' : 'Entidad pendiente')} · {employee.degree || employee.license || (isEn ? 'Credential pending' : 'Credencial pendiente')}</span></div><div className="hr-directory-files"><Paperclip/><strong>{files.all.length}</strong><span>{isEn ? 'files' : 'archivos'}</span></div><div className="hr-directory-progress"><strong>{percent}%</strong><div><i style={{ width: `${percent}%` }}/></div></div><ChevronRight/></button><button className={`hr-status-button ${employmentStatus}`} onClick={() => setEmployeeStatus(employee, employmentStatus === 'active' ? 'inactive' : 'active')}><span>{employmentStatus === 'active' ? (isEn ? 'Active' : 'Activo') : (isEn ? 'Inactive' : 'Inactivo')}</span>{employmentStatus === 'active' ? (isEn ? 'Mark inactive' : 'Marcar inactivo') : (isEn ? 'Mark active' : 'Marcar activo')}</button></article>})}</div></section>)}{!groups.length && <div className="hr-no-results"><UserRound/><h2>{isEn ? 'No employees match these filters' : 'Ningún empleado coincide con los filtros'}</h2><p>{isEn ? 'Adjust the search or position filter.' : 'Ajusta la búsqueda o el filtro de posición.'}</p></div>}</div>

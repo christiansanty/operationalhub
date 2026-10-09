@@ -60,9 +60,12 @@ To deliver invitation emails, configure these server-only values in `.env.local`
 APP_PUBLIC_URL=https://your-operational-hub.example.com
 RESEND_API_KEY=re_your_server_side_key
 INVITATION_FROM_EMAIL="Operational Hub <onboarding@your-verified-domain.com>"
+HR_FROM_EMAIL="EM Group Human Resources <hr@your-verified-domain.com>"
 ```
 
 Without those values, local invitations return a one-time development link in the Users screen. Invited users use the link to create a password, activate the account and start a seven-day server session.
+
+Human Resources → Employee Package supports future hires before an employee account exists. HR selects master documents and sends either a secure return portal or a tracked DocuSign draft. Completed files enter the protected onboarding inbox and remain unassigned until HR selects the matching employee record. `HR_FROM_EMAIL` uses the same Resend account; when it is not configured, the app opens a manual email draft containing the personal secure link. DocuSign automatic return requires `DOCUSIGN_CONNECT_URL` and `DOCUSIGN_CONNECT_HMAC_SECRET` in addition to the account credentials.
 
 ## Included in this prototype
 

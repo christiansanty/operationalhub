@@ -29,6 +29,12 @@ assert.equal(canSessionAccessPage(appOnly,'hub'),true);
 assert.equal(canSessionAccessApplication(appOnly,'marketing-suite'),true);
 assert.equal(canSessionAccessApplication(appOnly,'financial-hub'),false);
 
+const credentialingOnly={id:'credentialing-employee',role:'employee',scope:'custom',permissions:{credentialing:'view',contracting:'none'}};
+assert.equal(canSessionAccessPage(credentialingOnly,'credentialing'),true);
+assert.equal(canSessionManagePage(credentialingOnly,'credentialing'),false);
+assert.equal(canSessionAccessPage(credentialingOnly,'contracting'),false);
+assert.equal(firstAccessiblePage(credentialingOnly),'credentialing');
+
 const admin={id:'admin',role:'admin',scope:'hub',permissions:{}};
 assert.equal(canSessionAccessPage(admin,'roadmap'),true);
 assert.equal(canSessionAccessPage(admin,'corporate'),false);
@@ -37,6 +43,7 @@ assert.equal(canSessionAccessPage(owner,'corporate'),true);
 
 const testRoot=await mkdtemp(path.join(tmpdir(),'operational-hub-access-'));
 process.env.OPERATIONAL_HUB_DATABASE_PATH=path.join(testRoot,'access.sqlite');
+process.env.HR_PACKAGE_STORAGE_ROOT=path.join(testRoot,'hr-packages');
 delete process.env.RESEND_API_KEY;delete process.env.INVITATION_FROM_EMAIL;
 try{
   const access=await import(`../server/access-store.mjs?test=${Date.now()}`);
@@ -81,6 +88,21 @@ try{
   const webhookSignature=createHmac('sha256',process.env.DOCUSIGN_CONNECT_HMAC_SECRET).update(webhookBody).digest('base64');
   assert.equal(docusign.verifyDocusignConnectSignature(webhookBody,webhookSignature),true);
   assert.equal(docusign.verifyDocusignConnectSignature(webhookBody,'invalid-signature'),false);
+
+  const packageStore=await import(`../server/hr-package-store.mjs?test=${Date.now()}`);
+  const packageTemplate=await packageStore.createHrPackage({clientId:'workflow-template',filename:'employee-package.pdf',type:'application/pdf',base64:Buffer.from('blank-package').toString('base64')});
+  const workflowStore=await import(`../server/hr-package-workflow-store.mjs?test=${Date.now()}`);
+  const createdWorkflow=await workflowStore.createHrPackageWorkflow({candidateName:'Future Employee',candidateEmail:'future@emgroup.test',packageIds:[packageTemplate.id],deliveryMethod:'portal'},'test-admin');
+  const publicWorkflow=await workflowStore.getPublicHrPackageWorkflow(createdWorkflow.token);
+  assert.equal(publicWorkflow.candidateEmail,'future@emgroup.test');
+  assert.equal(publicWorkflow.packages[0].filename,'employee-package.pdf');
+  const packageReturn=await workflowStore.archiveHrPackageReturn(publicWorkflow.id,{filename:'completed-package.pdf',type:'application/pdf',base64:Buffer.from('completed-package').toString('base64')});
+  assert.equal((await workflowStore.listHrPackageWorkflows())[0].status,'received');
+  assert.equal((await workflowStore.readHrPackageReturn(packageReturn.id)).bytes.toString(),'completed-package');
+  workflowStore.markHrPackageReturnAssigned(packageReturn.id,invited.user.id,'test-admin');
+  const assignedWorkflow=(await workflowStore.listHrPackageWorkflows()).find(item=>item.id===publicWorkflow.id);
+  assert.equal(assignedWorkflow.status,'assigned');
+  assert.equal(assignedWorkflow.employeeKey,invited.user.id);
 }finally{
   await rm(testRoot,{recursive:true,force:true});
 }

@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const root = path.resolve('server/data/hr-packages');
+const root = process.env.HR_PACKAGE_STORAGE_ROOT
+  ? path.resolve(process.env.HR_PACKAGE_STORAGE_ROOT)
+  : path.resolve('server/data/hr-packages');
 const indexPath = path.join(root, 'index.json');
 
 async function readIndex() {
