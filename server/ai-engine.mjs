@@ -41,6 +41,17 @@ const permissionLevel = (session,key) => {
   return Object.hasOwn(permissionRank,value)?value:'none';
 };
 const canAccess = (session,keys,required='view') => [].concat(keys).some(key=>(permissionRank[permissionLevel(session,key)]||0)>=(permissionRank[required]||1));
+const explicitPermissionLevel = (session,key) => {
+  const value=session?.permissions?.[key];
+  return Object.hasOwn(permissionRank,value)?value:'none';
+};
+const explicitEntityKeys = session => Object.entries({
+  'entity-medical':'medical',
+  'entity-care305':'care305',
+  'entity-aesthetics':'aesthetics',
+  'entity-seven':'seven',
+  'entity-research':'research',
+}).filter(([permission])=>permissionRank[explicitPermissionLevel(session,permission)]>=permissionRank.view).map(([,entity])=>entity);
 
 export async function getAiEngineStatus(session) {
   const aca = getAcaIntegrationStatus();
@@ -144,12 +155,14 @@ const compactRecord = (value, depth = 0) => {
     .map(([key, item]) => [key, compactRecord(item, depth + 1)]));
 };
 
-const datasetRowsForSession=(snapshot,dataset,session)=>{
+export const datasetRowsForSession=(snapshot,dataset,session)=>{
   const rows=Array.isArray(snapshot[dataset])?snapshot[dataset]:[];
-  if(dataset!=='providers')return rows;
-  const broad=canAccess(session,'human-resources','manage')||canAccess(session,['doctor-licenses','licenses','entity-medical','entity-care305','entity-aesthetics','entity-research']);
-  if(broad)return rows;
-  return canAccess(session,'human-resources')?rows.filter(row=>String(row.email||'').toLowerCase()===String(session.email||'').toLowerCase()):[];
+  const broad=canAccess(session,'human-resources','manage')||canAccess(session,['doctor-licenses','licenses'])||canAccess(session,'credentialing');
+  if (broad) return rows;
+  const scoped=explicitEntityKeys(session);
+  if(dataset==='providers'&&canAccess(session,'human-resources')&&!scoped.length)return rows.filter(row=>String(row.email||'').toLowerCase()===String(session.email||'').toLowerCase());
+  if (dataset==='providers'||dataset==='entities') return rows.filter(row=>row.entityKey&&scoped.includes(row.entityKey));
+  return [];
 };
 
 const searchRecords = ({ dataset, query, limit },session) => {
@@ -186,9 +199,9 @@ async function executeTool(name, argumentsJson, session) {
       status: snapshot.status,
       counts: {
         providers: canAccess(session,datasetPermissionKeys.providers) ? datasetRowsForSession(snapshot,'providers',session).length : null,
-        contracts: canAccess(session,datasetPermissionKeys.contracts) ? snapshot.contracts?.length || 0 : null,
-        licenses: canAccess(session,datasetPermissionKeys.licenses) ? snapshot.licenses?.length || 0 : null,
-        entities: canAccess(session,datasetPermissionKeys.entities) ? snapshot.entities?.length || 0 : null,
+        contracts: canAccess(session,datasetPermissionKeys.contracts) ? datasetRowsForSession(snapshot,'contracts',session).length : null,
+        licenses: canAccess(session,datasetPermissionKeys.licenses) ? datasetRowsForSession(snapshot,'licenses',session).length : null,
+        entities: canAccess(session,datasetPermissionKeys.entities) ? datasetRowsForSession(snapshot,'entities',session).length : null,
       },
     });
   }
@@ -286,6 +299,11 @@ const suggestedPage = (text) => {
 };
 
 export async function runOperationalAi({ messages, lang = 'es', page = 'hub' }, session) {
+  if (String(page || '').startsWith('research-')) {
+    const error = new Error('Operational AI is not enabled inside the restricted Research workspace.');
+    error.statusCode = 403;
+    throw error;
+  }
   if (!apiKey()) {
     const error = new Error('The OpenAI integration key is not configured on the Operational Hub backend.');
     error.statusCode = 503;

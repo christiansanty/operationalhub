@@ -7,11 +7,19 @@ import { createAcademyCertificate, getAcademyLearnerPhoto, getAcademyLearnerReco
 import { syncAcademyBackend } from './academy-sync.mjs';
 import { getAcademyWelcomeVideoStatus, saveAcademyWelcomeVideo, streamAcademyWelcomeVideo } from './academy-welcome-video.mjs';
 import { createInventoryRequest, decideInventoryRequest, listInventoryRequests } from './inventory-store.mjs';
+import { createItProposal, createItRoadmap, getItProposal, listItApplications, listItProposals, listItRoadmap, updateItProposal, updateItRoadmap } from './it-store.mjs';
 import { createDoctorDocument, getDoctorDocument, listDoctorDocuments } from './license-store.mjs';
 import { claimNextAcaRpaCheck, completeAcaRpaCheck, createAcaRpaCheck, getAcaIntegrationStatus, importAcaRecords, listAcaRecords, listAcaRpaChecks } from './aca-store.mjs';
 import { getOperationalAttachment, getOperationalSnapshot, updateOperationalContractStatus } from './operational-airtable-store.mjs';
 import { syncOperationalAirtable } from './operational-airtable-sync.mjs';
 import { getAiEngineStatus, runOperationalAi } from './ai-engine.mjs';
+import {
+  createResearchFollowup, createResearchLead, createResearchSafetyEvent, createResearchScreening,
+  createResearchAgreement, createResearchStudy, getResearchAgreement, getResearchLead, getResearchStatus, getResearchStudy, listResearchAgreements, listResearchLeads,
+  listResearchOutbox, listResearchStudies, recordResearchIntegrationEvent, updateResearchAgreement, updateResearchLead,
+  updateResearchStudy, upsertResearchLeadFromEmConnect,
+} from './research-store.mjs';
+import { emConnectStatus, parseEmConnectResearchEvent, universalStatus } from './research-integrations.mjs';
 import { createHrPackage, deleteHrPackage, getHrPackage, listHrPackages } from './hr-package-store.mjs';
 import { getHrPackageEmailStatus, sendHrPackageEmail } from './hr-package-email.mjs';
 import {
@@ -75,6 +83,63 @@ function hasModuleAccess(session,keys,required='view'){
   return Boolean(session)&&[].concat(keys).some(key=>(permissionRank[permissionLevel(session,key)]||0)>=minimum);
 }
 
+const researchSensitivePermissionKeys = new Set([
+  'research-leads:view','research-leads:manage','research-leads:contact:view',
+  'research-studies:view','research-studies:manage','research-sync:manage',
+]);
+
+function explicitPermissionLevel(session, key) {
+  if (!session) return 'none';
+  const value = session.permissions?.[key];
+  return Object.hasOwn(permissionRank, value) ? value : 'none';
+}
+
+function hasExplicitResearchPermission(session, key, required = 'view') {
+  if (!researchSensitivePermissionKeys.has(key)) return false;
+  return permissionRank[explicitPermissionLevel(session, key)] >= (permissionRank[required] || permissionRank.view);
+}
+
+function hasResearchEntityScope(session) {
+  return Boolean(session) && (permissionRank[explicitPermissionLevel(session, 'entity-research')] || 0) >= permissionRank.view;
+}
+
+function researchActor(request, permissionKey, required = 'view') {
+  const actor = requestIdentity(request);
+  if (!actor) return { actor: null, status: 401 };
+  if (!hasResearchEntityScope(actor) || !hasExplicitResearchPermission(actor, permissionKey, required)) return { actor, status: 403 };
+  return { actor, status: 200 };
+}
+
+function researchDataActor(request, permissionKey, required = 'view') {
+  const result = researchActor(request, permissionKey, required);
+  return result.status === 200 ? result.actor : null;
+}
+
+function researchActorAny(request, permissionKeys, required = 'view') {
+  const actor = requestIdentity(request);
+  if (!actor) return { actor: null, status: 401 };
+  if (!hasResearchEntityScope(actor) || !permissionKeys.some(key => hasExplicitResearchPermission(actor, key, required))) return { actor, status: 403 };
+  return { actor, status: 200 };
+}
+
+function entityScopeKeys(actor) {
+  const mapping = {
+    'entity-medical': 'medical',
+    'entity-care305': 'care305',
+    'entity-aesthetics': 'aesthetics',
+    'entity-seven': 'seven',
+    'entity-research': 'research',
+  };
+  return Object.entries(mapping).filter(([key]) => ['view','manage'].includes(explicitPermissionLevel(actor, key))).map(([, value]) => value);
+}
+
+function filterEntityRows(actor, rows) {
+  if (actor?.role === 'owner' || actor?.role === 'admin' || actor?.scope === 'full') return rows;
+  const scoped = entityScopeKeys(actor);
+  if (!scoped.length) return [];
+  return rows.filter(item => item.entityKey && scoped.includes(item.entityKey));
+}
+
 function academyRecordActor(request,learnerId,required='view'){
   const actor=requestIdentity(request);
   if(!hasModuleAccess(actor,'academy',required))return null;
@@ -94,15 +159,16 @@ function filteredOperationalSnapshot(actor){
   const entityProviderAccess=hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics','entity-research']);
   const ownProviders=canViewOwnProvider?snapshot.providers.filter(item=>String(item.email||'').toLowerCase()===String(actor.email||'').toLowerCase()):[];
   const entityProviderSummaries=entityProviderAccess?snapshot.providers.filter(item=>{
-    if(item.entity==='Eastern Medical Research')return hasModuleAccess(actor,'entity-research');
-    return hasModuleAccess(actor,['entity-medical','entity-care305','entity-aesthetics']);
-  }).map(item=>({recordId:item.recordId,name:item.name,status:item.status,degree:item.degree,credentialed:item.credentialed,role:item.role,entity:item.entity,lifecycle:item.lifecycle,workMode:item.workMode,initials:item.initials,source:'Restricted entity directory'})):[];
+    const key=item.entityKey;
+    if(!key)return false;
+    return entityScopeKeys(actor).includes(key);
+  }).map(item=>({recordId:item.recordId,name:item.name,status:item.status,degree:item.degree,credentialed:item.credentialed,role:item.role,entity:item.entity,entityKey:item.entityKey,lifecycle:item.lifecycle,workMode:item.workMode,initials:item.initials,source:'Restricted entity directory'})):[];
   return {
     status:snapshot.status,
     providers:broadProviderAccess?snapshot.providers:ownProviders.length?ownProviders:entityProviderSummaries,
     contracts:canContracts?snapshot.contracts:[],
     licenses:canLicenses?snapshot.licenses:[],
-    entities:canEntities?snapshot.entities:[],
+    entities:canEntities ? (canCredentialing || hasModuleAccess(actor,'contracting') ? snapshot.entities : filterEntityRows(actor, snapshot.entities)) : [],
   };
 }
 
@@ -166,6 +232,16 @@ function academyManager(request) {
   const session = resolveAccessSession(accessToken(request));
   if (hasModuleAccess(session,'academy','manage')) return session;
   return null;
+}
+
+function itManager(request) {
+  const actor = requestIdentity(request);
+  return actor && actor.permissions?.['it:manage'] === 'manage' ? actor : null;
+}
+
+function itActor(request) {
+  const actor = requestIdentity(request);
+  return actor ? { actor, status: 200 } : { actor: null, status: 401 };
 }
 
 async function readBuffer(request,maxBytes=131072){
@@ -258,6 +334,43 @@ const server = createServer(async (request, response) => {
       const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});
       return json(response, 200, await runOperationalAi(await readJson(request, 256 * 1024),actor));
     }
+    if (request.method === 'GET' && url.pathname === '/api/it/catalog') {
+      const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
+      return json(response, 200, { applications: listItApplications() });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/it/roadmap') {
+      const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
+      return json(response, 200, { roadmap: listItRoadmap(Object.fromEntries(url.searchParams.entries())) });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/it/roadmap') {
+      const actor = itManager(request); if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'IT Manage access required' : 'Authentication required' });
+      return json(response, 201, { roadmap: createItRoadmap(await readJson(request, 128 * 1024), actor.id) });
+    }
+    if (request.method === 'PATCH' && /^\/api\/it\/roadmap\/[^/]+$/.test(url.pathname)) {
+      const actor = itManager(request); if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'IT Manage access required' : 'Authentication required' });
+      const id = decodeURIComponent(url.pathname.split('/')[4]);
+      return json(response, 200, { roadmap: updateItRoadmap(id, await readJson(request, 128 * 1024), actor.id) });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/it/proposals') {
+      const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
+      const fullAccess = Boolean(itManager(request));
+      return json(response, 200, { proposals: listItProposals({ actorId: access.actor.id, fullAccess }), fullAccess });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/it/proposals') {
+      const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
+      return json(response, 201, { proposal: createItProposal(await readJson(request, 128 * 1024), access.actor) });
+    }
+    if (request.method === 'GET' && /^\/api\/it\/proposals\/[^/]+$/.test(url.pathname)) {
+      const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
+      const id = decodeURIComponent(url.pathname.split('/')[4]);
+      const proposal = getItProposal(id, { actorId: access.actor.id, fullAccess: Boolean(itManager(request)) });
+      return json(response, proposal ? 200 : 404, proposal ? { proposal } : { error: 'IT proposal not found' });
+    }
+    if (request.method === 'PATCH' && /^\/api\/it\/proposals\/[^/]+$/.test(url.pathname)) {
+      const actor = itManager(request); if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'IT Manage access required' : 'Authentication required' });
+      const id = decodeURIComponent(url.pathname.split('/')[4]);
+      return json(response, 200, { proposal: updateItProposal(id, await readJson(request, 64 * 1024), actor.id) });
+    }
     if (request.method === 'GET' && url.pathname === '/api/academy/status') {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'academy'))return json(response,403,{error:'Academy access required'});
       return json(response, 200, getAcademyStatus());
@@ -288,6 +401,90 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/api/academy/records') {
       const actor=requestIdentity(request);if(!hasModuleAccess(actor,'academy','manage'))return json(response,403,{error:'Academy Manage access required'});
       return json(response,200,{learners:await listAcademyLearnerRecords()});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/status') {
+      const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});if(!hasModuleAccess(actor,'entity-research'))return json(response,403,{error:'Research access required'});
+      const researchStatus=getResearchStatus();
+      return json(response,200,{research:{...researchStatus,leads:(hasExplicitResearchPermission(actor,'research-leads:view')||hasExplicitResearchPermission(actor,'research-leads:manage'))?researchStatus.leads:null,studies:(hasExplicitResearchPermission(actor,'research-studies:view')||hasExplicitResearchPermission(actor,'research-studies:manage'))?researchStatus.studies:null,agreements:(hasExplicitResearchPermission(actor,'research-studies:view')||hasExplicitResearchPermission(actor,'research-studies:manage'))?researchStatus.agreements:null,pendingOutbox:hasExplicitResearchPermission(actor,'research-sync:manage','manage')?researchStatus.pendingOutbox:null,integrationEvents:hasExplicitResearchPermission(actor,'research-sync:manage','manage')?researchStatus.integrationEvents:null},emConnect:emConnectStatus(),universal:universalStatus()});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/leads') {
+      const access=researchActorAny(request,['research-leads:view','research-leads:manage']);if(access.status!==200)return json(response,access.status,{error:access.status===401?'Authentication required':'Research leads access required'});
+      const canManage=hasExplicitResearchPermission(access.actor,'research-leads:manage','manage');
+      const includeContact=hasExplicitResearchPermission(access.actor,'research-leads:contact:view');
+      return json(response,200,{leads:listResearchLeads({actorId:access.actor.id,canManage,includeContact}),contactAccess:includeContact});
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research/leads') {
+      const access=researchDataActor(request,'research-leads:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research leads Manage access required':'Authentication required'});
+      const body=await readJson(request,64*1024);const lead=createResearchLead(body,access.id);return json(response,201,{lead:getResearchLead(lead.id,{actorId:access.id,canManage:true,includeContact:hasExplicitResearchPermission(access,'research-leads:contact:view')})});
+    }
+    if (request.method === 'GET' && /^\/api\/research\/leads\/[^/]+$/.test(url.pathname)) {
+      const access=researchActorAny(request,['research-leads:view','research-leads:manage']);if(access.status!==200)return json(response,access.status,{error:access.status===401?'Authentication required':'Research leads access required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);const canManage=hasExplicitResearchPermission(access.actor,'research-leads:manage','manage');const includeContact=hasExplicitResearchPermission(access.actor,'research-leads:contact:view');const lead=getResearchLead(id,{actorId:access.actor.id,canManage,includeContact});return json(response,lead?200:404,lead?{lead}:{error:'Research lead not found'});
+    }
+    if (request.method === 'PATCH' && /^\/api\/research\/leads\/[^/]+$/.test(url.pathname)) {
+      const access=researchDataActor(request,'research-leads:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research leads Manage access required':'Authentication required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);updateResearchLead(id,await readJson(request,32*1024),{actorId:access.id,canManage:true});return json(response,200,{lead:getResearchLead(id,{actorId:access.id,canManage:true,includeContact:hasExplicitResearchPermission(access,'research-leads:contact:view')})});
+    }
+    if (request.method === 'POST' && /^\/api\/research\/leads\/[^/]+\/follow-ups$/.test(url.pathname)) {
+      const access=researchDataActor(request,'research-leads:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research leads Manage access required':'Authentication required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);return json(response,201,{followUp:createResearchFollowup(id,await readJson(request,16*1024),{actorId:access.id,canManage:true})});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/studies') {
+      const access=researchActorAny(request,['research-studies:view','research-studies:manage']);if(access.status!==200)return json(response,access.status,{error:access.status===401?'Authentication required':'Research studies access required'});
+      const canManage=hasExplicitResearchPermission(access.actor,'research-studies:manage','manage');return json(response,200,{studies:listResearchStudies({actorId:access.actor.id,canManage})});
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research/studies') {
+      const access=researchDataActor(request,'research-studies:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research studies Manage access required':'Authentication required'});
+      return json(response,201,{study:createResearchStudy(await readJson(request,32*1024),access.id)});
+    }
+    if (request.method === 'GET' && /^\/api\/research\/studies\/[^/]+$/.test(url.pathname)) {
+      const access=researchActorAny(request,['research-studies:view','research-studies:manage']);if(access.status!==200)return json(response,access.status,{error:access.status===401?'Authentication required':'Research studies access required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);const canManage=hasExplicitResearchPermission(access.actor,'research-studies:manage','manage');const study=getResearchStudy(id,{actorId:access.actor.id,canManage});return json(response,study?200:404,study?{study}:{error:'Research study not found'});
+    }
+    if (request.method === 'PATCH' && /^\/api\/research\/studies\/[^/]+$/.test(url.pathname)) {
+      const access=researchDataActor(request,'research-studies:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research studies Manage access required':'Authentication required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);return json(response,200,{study:updateResearchStudy(id,await readJson(request,32*1024),{actorId:access.id,canManage:true})});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/agreements') {
+      const access=researchActorAny(request,['research-studies:view','research-studies:manage']);if(access.status!==200)return json(response,access.status,{error:access.status===401?'Authentication required':'Research study agreement access required'});
+      const canManage=hasExplicitResearchPermission(access.actor,'research-studies:manage','manage');return json(response,200,{agreements:listResearchAgreements({actorId:access.actor.id,canManage})});
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research/agreements') {
+      const access=researchDataActor(request,'research-studies:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research study agreement Manage access required':'Authentication required'});
+      return json(response,201,{agreement:createResearchAgreement(await readJson(request,32*1024),access.id)});
+    }
+    if (request.method === 'GET' && /^\/api\/research\/agreements\/[^/]+$/.test(url.pathname)) {
+      const access=researchActorAny(request,['research-studies:view','research-studies:manage']);if(access.status!==200)return json(response,access.status,{error:access.status===401?'Authentication required':'Research study agreement access required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);const canManage=hasExplicitResearchPermission(access.actor,'research-studies:manage','manage');const agreement=getResearchAgreement(id,{actorId:access.actor.id,canManage});return json(response,agreement?200:404,agreement?{agreement}:{error:'Research agreement not found'});
+    }
+    if (request.method === 'PATCH' && /^\/api\/research\/agreements\/[^/]+$/.test(url.pathname)) {
+      const access=researchDataActor(request,'research-studies:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research study agreement Manage access required':'Authentication required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);return json(response,200,{agreement:updateResearchAgreement(id,await readJson(request,32*1024),{actorId:access.id,canManage:true})});
+    }
+    if (request.method === 'POST' && /^\/api\/research\/studies\/[^/]+\/screenings$/.test(url.pathname)) {
+      const access=researchDataActor(request,'research-studies:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research studies Manage access required':'Authentication required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);return json(response,201,{screening:createResearchScreening(id,await readJson(request,24*1024),access.id)});
+    }
+    if (request.method === 'POST' && /^\/api\/research\/studies\/[^/]+\/safety-events$/.test(url.pathname)) {
+      const access=researchDataActor(request,'research-studies:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research studies Manage access required':'Authentication required'});
+      const id=decodeURIComponent(url.pathname.split('/')[4]);return json(response,201,{event:createResearchSafetyEvent(id,await readJson(request,24*1024),access.id)});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/integrations/outbox') {
+      const access=researchDataActor(request,'research-sync:manage','manage');if(!access)return json(response,requestIdentity(request)?403:401,{error:requestIdentity(request)?'Research sync Manage access required':'Authentication required'});
+      return json(response,200,{outbox:listResearchOutbox(),state:'pending_external_contract'});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/integrations/em-connect/status') {
+      const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});if(!hasModuleAccess(actor,'entity-research'))return json(response,403,{error:'Research access required'});return json(response,200,emConnectStatus());
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research/integrations/em-connect/events') {
+      const raw=await readBuffer(request,256*1024);let event;
+      try { event=parseEmConnectResearchEvent(raw.toString('utf8'),request.headers['x-em-connect-signature']); }
+      catch (error) { if(error.code==='research_route_required') recordResearchIntegrationEvent({sourceSystem:'em-connect',eventId:'rejected-'+Date.now(),eventType:'contact.upserted'},'blocked',error.code); throw error; }
+      if(event.ignored){recordResearchIntegrationEvent(event,'ignored');return json(response,202,{state:'ignored',reason:event.reason});}
+      const result=upsertResearchLeadFromEmConnect(event);return json(response,200,{state:result.state,leadId:result.lead.id});
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/integrations/universal/status') {
+      const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});if(!hasModuleAccess(actor,'entity-research'))return json(response,403,{error:'Research access required'});return json(response,200,universalStatus());
     }
     if (request.method === 'GET' && /^\/api\/academy\/records\/[^/]+$/.test(url.pathname)) {
       const learnerId=decodeURIComponent(url.pathname.split('/')[4]);

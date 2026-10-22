@@ -14,6 +14,12 @@ const baseModules = isEn => [
   { id:'entity-aesthetics', label:'Eastern Medical Aesthetics', group:isEn ? 'Organizations' : 'Organizaciones' },
   { id:'entity-seven', label:'Seven Insurance', group:isEn ? 'Organizations' : 'Organizaciones' },
   { id:'entity-research', label:'Eastern Medical Research', group:isEn ? 'Organizations' : 'Organizaciones' },
+  { id:'research-leads:view', label:isEn ? 'Research leads · View' : 'Leads de Research · Ver', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-leads:manage', label:isEn ? 'Research leads · Manage' : 'Leads de Research · Gestionar', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-leads:contact:view', label:isEn ? 'Research lead contacts · View' : 'Contactos de leads Research · Ver', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-studies:view', label:isEn ? 'Research studies · View' : 'Estudios de Research · Ver', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-studies:manage', label:isEn ? 'Research studies · Manage' : 'Estudios de Research · Gestionar', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-sync:manage', label:isEn ? 'Research integrations · Manage' : 'Integraciones de Research · Gestionar', group:isEn ? 'Research controls' : 'Controles de Research' },
   { id:'leads', label:isEn ? 'Leads Center' : 'Centro de Leads', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'protocols', label:isEn ? 'Operational Protocols' : 'Protocolos Operacionales', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'licenses', label:'Licenses', group:isEn ? 'Operations' : 'Operaciones' },
@@ -23,15 +29,18 @@ const baseModules = isEn => [
   { id:'academy', label:'Eastern Medical Academy', group:isEn ? 'People' : 'Personas' },
   { id:'human-resources', label:isEn ? 'Human Resources' : 'Recursos Humanos', group:isEn ? 'People' : 'Personas' },
   { id:'admin-users', label:isEn ? 'Administration · Users' : 'Administración · Usuarios', group:isEn ? 'Administration' : 'Administración' },
+  { id:'it:view', label:isEn ? 'IT workspace · View' : 'Espacio IT · Ver', group:'IT' },
+  { id:'it:manage', label:isEn ? 'IT workspace · Manage' : 'Espacio IT · Gestionar', group:'IT' },
   ...applicationPermissionModules.map(module => ({ ...module, group:isEn ? 'Connected applications' : 'Aplicaciones conectadas' })),
 ];
 
 const initials = name => String(name || '').trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('');
 const blankPermissions = modules => Object.fromEntries(modules.map(module => [module.id, 'none']));
 const permissionsForProfile = (profile, modules, current = {}) => {
+  const researchSensitive = new Set(['research-leads:view','research-leads:manage','research-leads:contact:view','research-studies:view','research-studies:manage','research-sync:manage']);
   if (profile === 'academy') return { ...blankPermissions(modules), academy:'view' };
-  if (profile === 'admin') return Object.fromEntries(modules.map(module => [module.id, 'manage']));
-  if (profile === 'owner') return { ...Object.fromEntries(modules.map(module => [module.id, 'manage'])), corporate:'manage' };
+  if (profile === 'admin') return Object.fromEntries(modules.map(module => [module.id, researchSensitive.has(module.id) ? (current[module.id] || 'none') : 'manage']));
+  if (profile === 'owner') return { ...Object.fromEntries(modules.map(module => [module.id, researchSensitive.has(module.id) ? (current[module.id] || 'none') : 'manage'])), corporate:'manage' };
   return { ...blankPermissions(modules), ...current };
 };
 

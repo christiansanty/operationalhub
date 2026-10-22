@@ -111,7 +111,7 @@ export const entityDefinitions={
     roles:[bilingual('Principal Investigator','Investigador Principal'),bilingual('Sub-Investigator','Subinvestigador'),bilingual('Research Coordinator','Coordinador de Research'),bilingual('Recruitment Specialist','Especialista de Reclutamiento'),bilingual('Regulatory Specialist','Especialista Regulatorio'),bilingual('Data / Quality Coordinator','Coordinador de Datos / Calidad')],
     resources:[
       {page:'protocols',icon:FileText,title:bilingual('Research Protocols','Protocolos de Research'),text:bilingual('Roles, outreach and operational controls.','Funciones, contacto y controles operacionales.')},
-      {page:'contracting',icon:ClipboardCheck,title:bilingual('Study Agreements','Acuerdos de Estudios'),text:bilingual('Sponsor, vendor and site agreements.','Acuerdos con patrocinadores, vendors y sede.')},
+      {page:'research-agreements',icon:ClipboardCheck,title:bilingual('Study Agreements','Acuerdos de Estudios'),text:bilingual('Research study, sponsor, vendor and site agreements.','Acuerdos de estudios, patrocinadores, vendors y sede de Research.')},
       {page:'academy',icon:GraduationCap,title:bilingual('Research Training','Capacitación de Research'),text:bilingual('Research workflow and compliance curriculum.','Currículo de flujo y cumplimiento de Research.')},
     ],
   },
@@ -201,11 +201,12 @@ function TeamView({definition,lang,staffRows,onNavigate}){
   return <section className="entity-team-view"><header><span>{lang==='en'?'PEOPLE & OWNERSHIP':'EQUIPO Y RESPONSABILIDAD'}</span><h2>{lang==='en'?`Teams inside ${definition.name}`:`Equipos dentro de ${definition.name}`}</h2><p>{lang==='en'?'Roles are organized here without inventing employees. Verified records remain sourced from Human Resources.':'Las funciones se organizan aquí sin inventar empleados. Los expedientes verificados permanecen conectados a Recursos Humanos.'}</p></header><div className="entity-role-grid">{definition.roles.map((role,index)=><article key={role.en}><span>{String(index+1).padStart(2,'0')}</span><UsersRound/><strong>{role[lang]}</strong><small>{lang==='en'?'Department role':'Función del departamento'}</small></article>)}</div>{definition.key==='medical'&&<section className="entity-provider-list"><div><span>{lang==='en'?'VERIFIED PROVIDER DIRECTORY':'DIRECTORIO VERIFICADO DE PROVEEDORES'}</span><h3>{lang==='en'?'Doctors and clinical providers':'Doctores y proveedores clínicos'}</h3></div><div>{medicalProviders.slice(0,8).map(row=><article key={row.name}><i>{row.initials}</i><span><strong>{row.name}</strong><small>{row.role} · {row.entity}</small></span></article>)}</div><button onClick={()=>onNavigate('doctor-licenses')}>{lang==='en'?'Open complete credentials and documents':'Abrir credenciales y documentos completos'}<ArrowRight/></button></section>}</section>;
 }
 
-function Resources({definition,lang,onNavigate}){
-  return <section className="entity-resources"><header><span>{lang==='en'?'ENTITY RESOURCES':'RECURSOS DE LA ENTIDAD'}</span><h2>{lang==='en'?'Connected records without duplicate screens':'Registros conectados sin pantallas duplicadas'}</h2><p>{lang==='en'?'These links open the shared source of truth only when the record belongs to a Hub-wide control.':'Estos enlaces abren la fuente compartida únicamente cuando el registro pertenece a un control general del Hub.'}</p></header><div>{definition.resources.map(({page,icon:Icon,title,text})=><button key={page} onClick={()=>onNavigate(page)}><Icon/><span><strong>{title[lang]}</strong><small>{text[lang]}</small></span><ArrowRight/></button>)}</div></section>;
+function Resources({definition,lang,onNavigate,canAccessPage=()=>true}){
+  const resources=definition.resources.filter(({page})=>canAccessPage(page));
+  return <section className="entity-resources"><header><span>{lang==='en'?'ENTITY RESOURCES':'RECURSOS DE LA ENTIDAD'}</span><h2>{lang==='en'?'Connected records without duplicate screens':'Registros conectados sin pantallas duplicadas'}</h2><p>{lang==='en'?'These links open the shared source of truth only when the record belongs to a Hub-wide control.':'Estos enlaces abren la fuente compartida únicamente cuando el registro pertenece a un control general del Hub.'}</p></header>{resources.length?<div>{resources.map(({page,icon:Icon,title,text})=><button key={page} onClick={()=>onNavigate(page)}><Icon/><span><strong>{title[lang]}</strong><small>{text[lang]}</small></span><ArrowRight/></button>)}</div>:<div className="entity-resources-empty"><ShieldCheck size={20}/><p>{lang==='en'?'No shared resources are assigned to this account.':'No hay recursos compartidos asignados a esta cuenta.'}</p></div>}</section>;
 }
 
-export default function EntityWorkspace({definition,section,lang,onNavigate,staffRows=[],renderLeads}){
+export default function EntityWorkspace({definition,section,lang,onNavigate,staffRows=[],renderLeads,canAccessPage=()=>true}){
   const Icon=definition.icon;
   return <div className={`entity-workspace ${definition.tone}`}>
     <header className="entity-workspace-hero"><button onClick={()=>onNavigate('hub')}><ArrowLeft/>{lang==='en'?'Operational Hub':'Operational Hub'}</button><div><span>{definition.eyebrow[lang]}</span><h1>{definition.name}</h1><p>{definition.summary[lang]}</p></div>{definition.logo?<img className="entity-workspace-logo" src={definition.logo} alt={`${definition.name} logo`}/>:<Icon/>}</header>
@@ -215,7 +216,7 @@ export default function EntityWorkspace({definition,section,lang,onNavigate,staf
       {section==='services'&&<DetailDirectory definition={definition} lang={lang} type="services"/>}
       {section==='team'&&<TeamView definition={definition} lang={lang} staffRows={staffRows} onNavigate={onNavigate}/>}
       {section==='leads'&&renderLeads()}
-      {section==='resources'&&<Resources definition={definition} lang={lang} onNavigate={onNavigate}/>}
+      {section==='resources'&&<Resources definition={definition} lang={lang} onNavigate={onNavigate} canAccessPage={canAccessPage}/>}
     </div>
   </div>;
 }

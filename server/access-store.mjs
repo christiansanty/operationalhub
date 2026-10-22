@@ -15,6 +15,9 @@ const permissionKeys = new Set([
   'dashboard','entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research',
   'leads','protocols','licenses','doctor-licenses','contracting','credentialing','academy','human-resources','personnel','admin-users',
   'app-seven-insurance','app-scribex-health','app-carecheck360','app-financial-hub','app-marketing-suite','app-executive-assistant',
+  'research-leads:view','research-leads:manage','research-leads:contact:view',
+  'research-studies:view','research-studies:manage','research-sync:manage',
+  'it:view','it:manage',
 ]);
 const accessProfiles = new Set(['academy', 'custom', 'admin', 'owner']);
 const employmentStatuses = new Set(['active', 'inactive']);
@@ -207,6 +210,13 @@ export function getAccessSystemStatus() {
     invitationLifetimeHours: invitationLifetimeMs / 3600000,
     sessionLifetimeDays: sessionLifetimeMs / 86400000,
   };
+}
+
+export function recordAccessAuditEvent(actorId, action, targetId = '', details = {}) {
+  const database = openDatabase();
+  try {
+    audit(database, actorId, action, targetId, details);
+  } finally { database.close() }
 }
 
 export function listAccessUsers() {

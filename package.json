@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "dev:full": "node --env-file-if-exists=.env.local scripts/dev-stack.mjs",
     "build": "vite build",
-    "test:access": "node scripts/test-access-control.mjs && node scripts/test-user-isolation.mjs && node scripts/test-hr-package-workflow.mjs",
+    "test:access": "node scripts/test-access-control.mjs && node scripts/test-user-isolation.mjs && node scripts/test-hr-package-workflow.mjs && node scripts/test-research-workflow.mjs && node scripts/test-it-workspace.mjs",
     "preview": "vite preview --host 127.0.0.1",
     "backend": "node --env-file-if-exists=.env.local server/index.mjs",
     "start": "node --env-file-if-exists=.env.local server/index.mjs",

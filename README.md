@@ -41,6 +41,27 @@ Configure `ACA_RPA_PROVIDER`, `ACA_RPA_CALLBACK_KEY` and `ACA_RPA_ENABLED` only 
 
 Normalized result records require `externalId` and `subject`; they may also include `facility`, `status`, `expiresOn`, `lastVerifiedAt` and source-specific fields. Portal credentials must remain in the authorized firm's credential vault and must never be posted to Operational Hub.
 
+## Eastern Medical Research restricted module
+
+Eastern Medical Research uses a private SQLite-backed store for leads, study/protocol activation, study assignments, screening/consent controls, safety-event records, audit events and an outbox. Research records are scoped to the `research` entity; lead contacts require the separate `research-leads:contact:view` permission, and participant references are internal identifiers only. Research leads, studies and participant data are not included in Operational AI, Universal, web search or the global lead center.
+
+The available EM Connect envelope documents `contact.upserted`, `conversation.upserted` and `message.upserted` with HMAC-SHA256 signing, but it does not define an explicit Research routing field. Therefore the module accepts no live Research delivery until `sourceType` routing and signed delivery are agreed and verified. Outbound updates remain in `pending_external_contract` outbox state. Configure `RESEARCH_EM_CONNECT_WEBHOOK_SECRET` only after that contract is approved.
+
+Universal is represented as a configuration-required / pending-verification status only. No Universal request or Research data transfer is made. The related server-only values are `RESEARCH_UNIVERSAL_BASE_URL`, `RESEARCH_UNIVERSAL_TOKEN` and `RESEARCH_UNIVERSAL_CONTRACT_VERSION`.
+
+## IT workspace
+
+The IT section uses a private SQLite-backed roadmap and proposal store. It seeds the existing Operational Hub application registry plus Universal catalog records, and keeps Art RPA and Medical RPA as separate roadmap lines. Blank connector, repository and access-link settings remain visibly unconnected or without evidence; the system never promotes a URL or source-code record to a verified integration state by itself.
+
+- `GET /api/it/catalog` — authenticated application catalog with configured links only.
+- `GET /api/it/roadmap` — authenticated read-only roadmap with filters, evidence state and attention flags.
+- `POST/PATCH /api/it/roadmap` — requires the explicit `it:manage` permission and writes an audit event/history record.
+- `GET /api/it/proposals` — returns the current user’s proposals, or the full inbox for `it:manage`.
+- `POST /api/it/proposals` — any active user may submit a server-stored proposal; proposal text rejects patient, PHI, credential and secret terms.
+- `PATCH /api/it/proposals/:id` — requires `it:manage`; status changes and decline explanations are audited.
+
+The IT permission keys are `it:view` and `it:manage`. Entity, contracting, application-launcher and other unrelated permissions do not grant IT management. No email, external notification, repository write, secret change or deployment is performed by this workspace. Optional `UNIVERSAL_BASE_URL`, `ART_RPA_URL`, `MEDICAL_RPA_URL` and `IT_REPOSITORY_*` values document future connectors; when blank, the UI reports no connection or no data.
+
 ## Run locally
 
 ```bash
