@@ -45,6 +45,7 @@ function readFile(file) {
 export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel = '' }) {
   const t = copy[lang] || copy.en;
   const [resources, setResources] = useState([]);
+  const [canContribute, setCanContribute] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState('file');
@@ -62,6 +63,7 @@ export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || t.loadFailed);
       setResources(payload.resources || []);
+      setCanContribute(Boolean(payload.canContribute));
       setCanManage(Boolean(payload.canManage));
       setError('');
     } catch (loadError) { setError(loadError.message || t.loadFailed); }
@@ -109,7 +111,7 @@ export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel
   return <section className="workspace-resources">
     <div className="workspace-resources-header">
       <div><span className="workspace-resources-kicker"><Paperclip size={14}/> {sectionLabel || (lang === 'es' ? 'SECCIÓN ACTUAL' : 'CURRENT SECTION')}</span><h2>{t.title}</h2><p>{t.subtitle}</p></div>
-      <button className="workspace-resource-add" onClick={() => { setOpen(true); setMessage(''); setError(''); }}><Plus size={17}/>{t.add}</button>
+      {canContribute && <button className="workspace-resource-add" onClick={() => { setOpen(true); setMessage(''); setError(''); }}><Plus size={17}/>{t.add}</button>}
     </div>
     {message && <p className="workspace-resource-message">{message}</p>}
     {error && <p className="workspace-resource-error">{error}</p>}

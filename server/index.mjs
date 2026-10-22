@@ -36,6 +36,7 @@ import {
 } from './hr-dossier-store.mjs';
 import { createDocusignEnvelope, downloadDocusignCombinedDocument, getDocusignStatus, verifyDocusignConnectSignature } from './docusign.mjs';
 import { createWorkspaceResource, deleteWorkspaceResource, getWorkspaceResource, listWorkspaceResources } from './workspace-resource-store.mjs';
+import { createResearchWorkspaceIdea, deleteResearchWorkspaceIdea, getResearchWorkspaceIdea, listResearchWorkspaceIdeas, updateResearchWorkspaceIdea } from './research-workspace-store.mjs';
 import {
   acceptInvitation, deleteAccessUser, getAccessSystemStatus, getInvitation, inviteAccessUser,
   listAccessUsers, loginAccessUser, logoutAccessSession, resendAccessInvitation,
@@ -448,15 +449,35 @@ const server = createServer(async (request, response) => {
       response.writeHead(200, { 'content-type': resource.content_type || 'application/octet-stream', 'content-disposition': `inline; filename="${safeName}"`, 'cache-control': 'private, max-age=300' });
       return createReadStream(resource.file_path).pipe(response);
     }
+    if (request.method === 'GET' && url.pathname === '/api/research-workspace/ideas') {
+      const scopeKey = url.searchParams.get('scope') || 'entity-research';
+      const ideaAccess = workspaceResourceActor(request, scopeKey, 'view');
+      if (ideaAccess.status !== 200) return json(response, ideaAccess.status, { error: ideaAccess.status === 401 ? 'Authentication required' : 'Research workspace access required' });
+      return json(response, 200, { ideas: listResearchWorkspaceIdeas(scopeKey), canCreate: true, canManage: workspaceResourceActor(request, scopeKey, 'manage').status === 200 });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research-workspace/ideas') {
+      const body = await readJson(request, 256 * 1024);
+      const ideaAccess = workspaceResourceActor(request, body.scopeKey || 'entity-research', 'view');
+      if (ideaAccess.status !== 200) return json(response, ideaAccess.status, { error: ideaAccess.status === 401 ? 'Authentication required' : 'Research workspace Manage access required' });
+      return json(response, 201, { idea: createResearchWorkspaceIdea(body, ideaAccess.actor) });
+    }
+    if (/^\/api\/research-workspace\/ideas\/[^/]+$/.test(url.pathname)) {
+      const id = decodeURIComponent(url.pathname.split('/')[4]);
+      const existing = getResearchWorkspaceIdea(id);
+      const ideaAccess = workspaceResourceActor(request, existing?.scope_key || 'entity-research', 'manage');
+      if (ideaAccess.status !== 200) return json(response, ideaAccess.status, { error: ideaAccess.status === 401 ? 'Authentication required' : 'Research workspace Manage access required' });
+      if (request.method === 'PATCH') return json(response, existing ? 200 : 404, existing ? { idea: updateResearchWorkspaceIdea(id, await readJson(request, 256 * 1024)) } : { error: 'Research idea not found' });
+      if (request.method === 'DELETE') return json(response, deleteResearchWorkspaceIdea(id) ? 200 : 404, { deleted: true });
+    }
     if (request.method === 'GET' && url.pathname === '/api/workspace-resources') {
       const scopeKey = url.searchParams.get('scope') || '';
       const resourceAccess = workspaceResourceActor(request, scopeKey, 'view');
       if (resourceAccess.status !== 200) return json(response, resourceAccess.status, { error: resourceAccess.status === 401 ? 'Authentication required' : 'Resource access required' });
-      return json(response, 200, { resources: listWorkspaceResources(scopeKey), canManage: workspaceResourceActor(request, scopeKey, 'manage').status === 200 });
+      return json(response, 200, { resources: listWorkspaceResources(scopeKey), canContribute: scopeKey === 'entity-research' ? workspaceResourceActor(request, scopeKey, 'view').status === 200 : workspaceResourceActor(request, scopeKey, 'manage').status === 200, canManage: workspaceResourceActor(request, scopeKey, 'manage').status === 200 });
     }
     if (request.method === 'POST' && url.pathname === '/api/workspace-resources') {
       const body = await readJson(request, 42 * 1024 * 1024);
-      const resourceAccess = workspaceResourceActor(request, body.scopeKey, 'manage');
+      const resourceAccess = workspaceResourceActor(request, body.scopeKey, body.scopeKey === 'entity-research' ? 'view' : 'manage');
       if (resourceAccess.status !== 200) return json(response, resourceAccess.status, { error: resourceAccess.status === 401 ? 'Authentication required' : 'Resource Manage access required' });
       return json(response, 201, { resource: await createWorkspaceResource(body, resourceAccess.actor) });
     }
