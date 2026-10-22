@@ -6,10 +6,10 @@ const MAX_FILE_BYTES = 30 * 1024 * 1024;
 
 const copy = {
   en: {
-    title: 'Resources & attachments', subtitle: 'Keep documents, photos, files and useful links with this section.', add: 'Add resource', close: 'Close', type: 'Resource type', file: 'Document or file', photo: 'Photo or image', sheet: 'Google Sheet', drive: 'Google Drive', link: 'Web link', resourceTitle: 'Title', description: 'Description (optional)', chooseFile: 'Choose a file', noFile: 'No file selected', url: 'Paste link', save: 'Save resource', saving: 'Saving…', empty: 'No resources added yet.', by: 'Added by', remove: 'Remove', removeConfirm: 'Remove this resource?', unsupported: 'Use a valid file or link.', fileLimit: 'Files must be 30 MB or smaller.', saved: 'Resource saved.', failed: 'The resource could not be saved.', loadFailed: 'Resources could not be loaded.',
+    title: 'Resources & attachments', subtitle: 'Keep documents, photos, files and useful links with this section.', add: 'Add resource', googleSheet: 'Add Google Sheet', anyLink: 'Add any link', close: 'Close', type: 'Resource type', file: 'Document or file', photo: 'Photo or image', sheet: 'Google Sheet', drive: 'Google Drive', link: 'Web link', resourceTitle: 'Title', description: 'Description (optional)', chooseFile: 'Choose a file', noFile: 'No file selected', url: 'Paste link', save: 'Save resource', saving: 'Saving…', empty: 'No resources added yet.', by: 'Added by', remove: 'Remove', removeConfirm: 'Remove this resource?', unsupported: 'Use a valid file or link.', fileLimit: 'Files must be 30 MB or smaller.', saved: 'Resource saved.', failed: 'The resource could not be saved.', loadFailed: 'Resources could not be loaded.',
   },
   es: {
-    title: 'Recursos y adjuntos', subtitle: 'Mantén documentos, fotos, archivos y enlaces útiles junto a esta sección.', add: 'Agregar recurso', close: 'Cerrar', type: 'Tipo de recurso', file: 'Documento o archivo', photo: 'Foto o imagen', sheet: 'Google Sheet', drive: 'Google Drive', link: 'Enlace web', resourceTitle: 'Título', description: 'Descripción (opcional)', chooseFile: 'Elegir archivo', noFile: 'No hay archivo seleccionado', url: 'Pegar enlace', save: 'Guardar recurso', saving: 'Guardando…', empty: 'Todavía no hay recursos.', by: 'Agregado por', remove: 'Eliminar', removeConfirm: '¿Eliminar este recurso?', unsupported: 'Usa un archivo o enlace válido.', fileLimit: 'Los archivos deben pesar 30 MB o menos.', saved: 'Recurso guardado.', failed: 'No se pudo guardar el recurso.', loadFailed: 'No se pudieron cargar los recursos.',
+    title: 'Recursos y adjuntos', subtitle: 'Mantén documentos, fotos, archivos y enlaces útiles junto a esta sección.', add: 'Agregar recurso', googleSheet: 'Agregar Google Sheet', anyLink: 'Agregar cualquier enlace', close: 'Cerrar', type: 'Tipo de recurso', file: 'Documento o archivo', photo: 'Foto o imagen', sheet: 'Google Sheet', drive: 'Google Drive', link: 'Enlace web', resourceTitle: 'Título', description: 'Descripción (opcional)', chooseFile: 'Elegir archivo', noFile: 'No hay archivo seleccionado', url: 'Pegar enlace', save: 'Guardar recurso', saving: 'Guardando…', empty: 'Todavía no hay recursos.', by: 'Agregado por', remove: 'Eliminar', removeConfirm: '¿Eliminar este recurso?', unsupported: 'Usa un archivo o enlace válido.', fileLimit: 'Los archivos deben pesar 30 MB o menos.', saved: 'Recurso guardado.', failed: 'No se pudo guardar el recurso.', loadFailed: 'No se pudieron cargar los recursos.',
   },
 };
 
@@ -42,7 +42,7 @@ function readFile(file) {
   });
 }
 
-export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel = '' }) {
+export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel = '', quickActions = false }) {
   const t = copy[lang] || copy.en;
   const [resources, setResources] = useState([]);
   const [canContribute, setCanContribute] = useState(false);
@@ -74,6 +74,7 @@ export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel
   const isLink = useMemo(() => ['google-sheet', 'google-drive', 'link'].includes(kind), [kind]);
   const resourceLabel = item => t[item.kind === 'google-sheet' ? 'sheet' : item.kind === 'google-drive' ? 'drive' : item.kind === 'photo' ? 'photo' : item.kind === 'link' ? 'link' : 'file'];
 
+  const openForm = nextKind => { setKind(nextKind); setOpen(true); setMessage(''); setError(''); };
   const resetForm = () => { setOpen(false); setKind('file'); setTitle(''); setDescription(''); setUrl(''); setFile(null); setMessage(''); setError(''); };
 
   const submit = async event => {
@@ -111,7 +112,13 @@ export default function WorkspaceResources({ scopeKey, lang = 'en', sectionLabel
   return <section className="workspace-resources">
     <div className="workspace-resources-header">
       <div><span className="workspace-resources-kicker"><Paperclip size={14}/> {sectionLabel || (lang === 'es' ? 'SECCIÓN ACTUAL' : 'CURRENT SECTION')}</span><h2>{t.title}</h2><p>{t.subtitle}</p></div>
-      {canContribute && <button className="workspace-resource-add" onClick={() => { setOpen(true); setMessage(''); setError(''); }}><Plus size={17}/>{t.add}</button>}
+      {canContribute && <div className="workspace-resource-header-actions">
+        {quickActions && <div className="workspace-resource-quick-actions">
+          <button className="workspace-resource-quick" onClick={() => openForm('google-sheet')}><Table2 size={16}/>{t.googleSheet}</button>
+          <button className="workspace-resource-quick" onClick={() => openForm('link')}><Link2 size={16}/>{t.anyLink}</button>
+        </div>}
+        <button className="workspace-resource-add" onClick={() => openForm('file')}><Plus size={17}/>{t.add}</button>
+      </div>}
     </div>
     {message && <p className="workspace-resource-message">{message}</p>}
     {error && <p className="workspace-resource-error">{error}</p>}
