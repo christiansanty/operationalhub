@@ -13,6 +13,7 @@ import { claimNextAcaRpaCheck, completeAcaRpaCheck, createAcaRpaCheck, getAcaInt
 import { getOperationalAttachment, getOperationalSnapshot, updateOperationalContractStatus } from './operational-airtable-store.mjs';
 import { syncOperationalAirtable } from './operational-airtable-sync.mjs';
 import { getAiEngineStatus, runOperationalAi } from './ai-engine.mjs';
+import { createCorporateAttachment, createCorporateNote, createCorporateRecord, generateCorporateDocument, getCorporateAttachment, getCorporateRecord, listCorporateRecords, updateCorporateRecord } from './corporate-store.mjs';
 import {
   createResearchFollowup, createResearchLead, createResearchSafetyEvent, createResearchScreening,
   createResearchAgreement, createResearchStudy, getResearchAgreement, getResearchLead, getResearchStatus, getResearchStudy, listResearchAgreements, listResearchLeads,
@@ -244,6 +245,13 @@ function itActor(request) {
   return actor ? { actor, status: 200 } : { actor: null, status: 401 };
 }
 
+function corporateActor(request) {
+  const actor = requestIdentity(request);
+  if (!actor) return { actor: null, status: 401 };
+  if (actor.role === 'owner' || actor.scope === 'full') return { actor, status: 200 };
+  return { actor, status: 403 };
+}
+
 async function readBuffer(request,maxBytes=131072){
   const chunks=[];let size=0;
   for await(const chunk of request){size+=chunk.length;if(size>maxBytes)throw new Error('Request body too large');chunks.push(chunk)}
@@ -383,6 +391,43 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/api/ai/chat') {
       const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});
       return json(response, 200, await runOperationalAi(await readJson(request, 256 * 1024),actor));
+    }
+    if (request.method === 'GET' && url.pathname === '/api/corporate/records') {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      return json(response, 200, { records: listCorporateRecords(url.searchParams.get('category') || '') });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/corporate/records') {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      return json(response, 201, { record: createCorporateRecord(await readJson(request, 256 * 1024), access.actor) });
+    }
+    if (request.method === 'GET' && /^\/api\/corporate\/records\/[^/]+$/.test(url.pathname)) {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      const record = getCorporateRecord(decodeURIComponent(url.pathname.split('/')[4]));
+      return json(response, record ? 200 : 404, record ? { record } : { error: 'Corporate record not found' });
+    }
+    if (request.method === 'PATCH' && /^\/api\/corporate\/records\/[^/]+$/.test(url.pathname)) {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      return json(response, 200, { record: updateCorporateRecord(decodeURIComponent(url.pathname.split('/')[4]), await readJson(request, 256 * 1024), access.actor) });
+    }
+    if (request.method === 'POST' && /^\/api\/corporate\/records\/[^/]+\/notes$/.test(url.pathname)) {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      return json(response, 201, { record: createCorporateNote(decodeURIComponent(url.pathname.split('/')[4]), (await readJson(request, 32 * 1024)).note, access.actor) });
+    }
+    if (request.method === 'POST' && /^\/api\/corporate\/records\/[^/]+\/document$/.test(url.pathname)) {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      return json(response, 200, { record: generateCorporateDocument(decodeURIComponent(url.pathname.split('/')[4]), (await readJson(request, 64 * 1024)).prompt, access.actor) });
+    }
+    if (request.method === 'POST' && /^\/api\/corporate\/records\/[^/]+\/attachments$/.test(url.pathname)) {
+      const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      return json(response, 201, { record: await createCorporateAttachment(decodeURIComponent(url.pathname.split('/')[4]), await readJson(request, 42 * 1024 * 1024), access.actor) });
+    }
+    if (request.method === 'GET' && /^\/api\/corporate\/attachments\/[^/]+\/file$/.test(url.pathname)) {
+      const corporateAccess = corporateActor(request); if (corporateAccess.status !== 200) return json(response, corporateAccess.status, { error: corporateAccess.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
+      const attachment = getCorporateAttachment(decodeURIComponent(url.pathname.split('/')[4]));
+      if (!attachment || await access(attachment.file_path).then(() => false).catch(() => true)) return json(response, 404, { error: 'Attachment not found' });
+      const safeName = attachment.filename.replace(/["\r\n]/g, '_');
+      response.writeHead(200, { 'content-type': attachment.content_type || 'application/octet-stream', 'content-disposition': `inline; filename="${safeName}"`, 'cache-control': 'private, no-store' });
+      return createReadStream(attachment.file_path).pipe(response);
     }
     if (request.method === 'POST' && url.pathname === '/api/integrations/application-push') {
       if (!scopeSyncAuthorized(request)) return json(response, 401, { error: 'Application scope sync authorization required' });
