@@ -117,6 +117,7 @@ export async function createWorkspaceResource(payload = {}, actor) {
     const bytes = decodeBase64(payload.base64);
     size = bytes.length;
     const id = randomUUID();
+    mkdirSync(resourceRoot, { recursive: true, mode: 0o700 });
     filePath = path.join(resourceRoot, `${id}${path.extname(filename).slice(0, 16)}`);
     await writeFile(filePath, bytes, { mode: 0o600 });
     const timestamp = now();
