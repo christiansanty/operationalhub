@@ -39,6 +39,12 @@ import { createWorkspaceResource, deleteWorkspaceResource, getWorkspaceResource,
 import { createResearchWorkspaceIdea, deleteResearchWorkspaceIdea, getResearchWorkspaceIdea, listResearchWorkspaceIdeas, updateResearchWorkspaceIdea } from './research-workspace-store.mjs';
 import { createResearchWorkspaceItem, deleteResearchWorkspaceItem, getResearchWorkspaceItem, listResearchWorkspaceItems, updateResearchWorkspaceItem } from './research-workspace-items-store.mjs';
 import {
+  createFundamentalStudy, createFundamentalStudyDocument, createFundamentalStudyRequirement,
+  deleteFundamentalStudyDocument, getFundamentalStudy, listFundamentalStudies, prepareFundamentalStudyAgent,
+  updateFundamentalStudy, updateFundamentalStudyRequirement,
+} from './research-fundamental-studies-store.mjs';
+import { fundamentalStudyAgentStatus } from './research-integrations.mjs';
+import {
   acceptInvitation, deleteAccessUser, getAccessSystemStatus, getInvitation, inviteAccessUser,
   listAccessUsers, loginAccessUser, logoutAccessSession, resendAccessInvitation,
   resolveAccessSession, updateAccessUser,
@@ -90,6 +96,7 @@ function hasModuleAccess(session,keys,required='view'){
 const researchSensitivePermissionKeys = new Set([
   'research-leads:view','research-leads:manage','research-leads:contact:view',
   'research-studies:view','research-studies:manage','research-sync:manage',
+  'research-fundamental-studies:view','research-fundamental-studies:manage',
 ]);
 
 function explicitPermissionLevel(session, key) {
@@ -489,6 +496,71 @@ const server = createServer(async (request, response) => {
       if (itemAccess.status !== 200) return json(response, itemAccess.status, { error: itemAccess.status === 401 ? 'Authentication required' : 'Research workspace Manage access required' });
       if (request.method === 'PATCH') return json(response, existing ? 200 : 404, existing ? { item: updateResearchWorkspaceItem(id, await readJson(request, 42 * 1024 * 1024)) } : { error: 'Research workspace item not found' });
       if (request.method === 'DELETE') return json(response, deleteResearchWorkspaceItem(id) ? 200 : 404, { deleted: true });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/fundamental-studies/agents/status') {
+      const access = researchActorAny(request, ['research-fundamental-studies:view', 'research-fundamental-studies:manage']);
+      if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Fundamental Studies access required' });
+      return json(response, 200, fundamentalStudyAgentStatus());
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research/fundamental-studies') {
+      const access = researchActorAny(request, ['research-fundamental-studies:view', 'research-fundamental-studies:manage']);
+      if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Fundamental Studies access required' });
+      return json(response, 200, { studies: listFundamentalStudies(Object.fromEntries(url.searchParams.entries())), canManage: hasExplicitResearchPermission(access.actor, 'research-fundamental-studies:manage', 'manage') });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research/fundamental-studies') {
+      const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
+      if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
+      return json(response, 201, { study: createFundamentalStudy(await readJson(request, 128 * 1024), actor) });
+    }
+    if (/^\/api\/research\/fundamental-studies\/[^/]+\/agents\/prepare$/.test(url.pathname)) {
+      const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
+      if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
+      const studyId = decodeURIComponent(url.pathname.split('/')[4]);
+      const result = prepareFundamentalStudyAgent(studyId, await readJson(request, 32 * 1024), actor, fundamentalStudyAgentStatus());
+      return json(response, result ? 200 : 404, result ? { result } : { error: 'Fundamental Study not found' });
+    }
+    if (/^\/api\/research\/fundamental-studies\/[^/]+\/requirements$/.test(url.pathname)) {
+      const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
+      if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
+      const studyId = decodeURIComponent(url.pathname.split('/')[4]);
+      const requirement = createFundamentalStudyRequirement(studyId, await readJson(request, 32 * 1024), actor);
+      return json(response, requirement ? 201 : 404, requirement ? { requirement } : { error: 'Fundamental Study not found' });
+    }
+    if (/^\/api\/research\/fundamental-studies\/[^/]+\/documents$/.test(url.pathname)) {
+      const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
+      if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
+      const studyId = decodeURIComponent(url.pathname.split('/')[4]);
+      const body = await readJson(request, 42 * 1024 * 1024);
+      if (body.resourceId) {
+        const resource = getWorkspaceResource(body.resourceId);
+        if (!resource || resource.scope_key !== 'entity-research') return json(response, 404, { error: 'Authorized Research document resource not found' });
+      }
+      const document = createFundamentalStudyDocument(studyId, body, actor);
+      return json(response, document ? 201 : 404, document ? { document } : { error: 'Fundamental Study not found' });
+    }
+    if (/^\/api\/research\/fundamental-studies\/[^/]+\/requirements\/[^/]+$/.test(url.pathname)) {
+      const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
+      if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
+      const requirementId = decodeURIComponent(url.pathname.split('/')[5]);
+      return json(response, 200, { requirement: updateFundamentalStudyRequirement(requirementId, await readJson(request, 32 * 1024), actor) });
+    }
+    if (/^\/api\/research\/fundamental-studies\/[^/]+\/documents\/[^/]+$/.test(url.pathname)) {
+      const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
+      if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
+      const documentId = decodeURIComponent(url.pathname.split('/')[5]);
+      const deleted = deleteFundamentalStudyDocument(documentId, actor);
+      return json(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'Fundamental Study document not found' });
+    }
+    if (/^\/api\/research\/fundamental-studies\/[^/]+$/.test(url.pathname)) {
+      const studyId = decodeURIComponent(url.pathname.split('/')[4]);
+      const access = researchActorAny(request, ['research-fundamental-studies:view', 'research-fundamental-studies:manage']);
+      if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Fundamental Studies access required' });
+      const study = getFundamentalStudy(studyId);
+      if (request.method === 'GET') return json(response, study ? 200 : 404, study ? { study } : { error: 'Fundamental Study not found' });
+      if (request.method === 'PATCH') {
+        if (!hasExplicitResearchPermission(access.actor, 'research-fundamental-studies:manage', 'manage')) return json(response, 403, { error: 'Fundamental Studies Manage access required' });
+        return json(response, study ? 200 : 404, study ? { study: updateFundamentalStudy(studyId, await readJson(request, 128 * 1024), access.actor) } : { error: 'Fundamental Study not found' });
+      }
     }
     if (request.method === 'GET' && url.pathname === '/api/workspace-resources') {
       const scopeKey = url.searchParams.get('scope') || '';

@@ -17,6 +17,7 @@ const permissionKeys = new Set([
   'app-seven-insurance','app-scribex-health','app-carecheck360','app-financial-hub','app-marketing-suite','app-executive-assistant',
   'research-leads:view','research-leads:manage','research-leads:contact:view',
   'research-studies:view','research-studies:manage','research-sync:manage',
+  'research-fundamental-studies:view','research-fundamental-studies:manage',
   'it:view','it:manage',
 ]);
 const accessProfiles = new Set(['academy', 'custom', 'admin', 'owner']);

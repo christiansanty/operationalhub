@@ -3,6 +3,7 @@ const permissionLevels = new Set(['view', 'manage']);
 export const researchPermissionKeys = [
   'research-leads:view', 'research-leads:manage', 'research-leads:contact:view',
   'research-studies:view', 'research-studies:manage', 'research-sync:manage',
+  'research-fundamental-studies:view', 'research-fundamental-studies:manage',
 ];
 
 export const pagePermissionKey = page => {

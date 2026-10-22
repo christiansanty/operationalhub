@@ -2,13 +2,14 @@ import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft, ArrowRight, BookOpen, BriefcaseBusiness, Building2, CheckCircle2,
   ClipboardCheck, FileText, GraduationCap, HeartPulse, MapPin, ShieldCheck,
-  Sparkles, Stethoscope, Target, UserRound, UsersRound,
+  Search, Sparkles, Stethoscope, Target, UserRound, UsersRound,
 } from 'lucide-react';
 import './entity-workspace.css';
 import './research-workspace.css';
 import ResearchWorkspaceIdeas from '../shared/ResearchWorkspaceIdeas.jsx';
 import ResearchWorkspaceItems from '../shared/ResearchWorkspaceItems.jsx';
 import WorkspaceResources from '../shared/WorkspaceResources.jsx';
+import FundamentalStudies from '../research/FundamentalStudies.jsx';
 
 const bilingual=(en,es)=>({en,es});
 
@@ -211,9 +212,10 @@ function Resources({definition,lang,onNavigate,canAccessPage=()=>true}){
   return <section className="entity-resources"><header><span>{lang==='en'?'ENTITY RESOURCES':'RECURSOS DE LA ENTIDAD'}</span><h2>{lang==='en'?'Connected records without duplicate screens':'Registros conectados sin pantallas duplicadas'}</h2><p>{lang==='en'?'These links open the shared source of truth only when the record belongs to a Hub-wide control.':'Estos enlaces abren la fuente compartida únicamente cuando el registro pertenece a un control general del Hub.'}</p></header>{resources.length?<div>{resources.map(({page,icon:Icon,title,text})=><button key={page} onClick={()=>onNavigate(page)}><Icon/><span><strong>{title[lang]}</strong><small>{text[lang]}</small></span><ArrowRight/></button>)}</div>:<div className="entity-resources-empty"><ShieldCheck size={20}/><p>{lang==='en'?'No shared resources are assigned to this account.':'No hay recursos compartidos asignados a esta cuenta.'}</p></div>}</section>;
 }
 
-function ResearchWorkspace({lang,onNavigate,canAccessPage=()=>true}){
+function ResearchWorkspace({lang,onNavigate,canAccessPage=()=>true,session}){
   const isEn=lang==='en';
   const areas=[
+    {page:'fundamental-studies',icon:Search,title:isEn?'Fundamental Studies':'Fundamental Studies',text:isEn?'Find, evaluate and prepare research opportunities with source, requirements and document control.':'Busca, evalúa y prepara oportunidades con fuentes, requisitos y control documental.',status:isEn?'Research opportunity control':'Control de oportunidades'},
     {page:'research-agreements',icon:ClipboardCheck,title:isEn?'Study Agreements':'Acuerdos de Estudios',text:isEn?'Manually register study, sponsor, vendor and site agreements.':'Registra manualmente acuerdos de estudios, patrocinadores, vendors y sedes.',status:isEn?'Manual register':'Registro manual'},
     {page:'protocols',icon:FileText,title:isEn?'Protocols & Controls':'Protocolos y Controles',text:isEn?'Keep approved roles, outreach boundaries and operating procedures visible.':'Mantén visibles los roles aprobados, límites de contacto y procedimientos.',status:isEn?'Shared control':'Control compartido'},
     {page:'research-leads',icon:Target,title:isEn?'Recruitment & Leads':'Reclutamiento y Leads',text:isEn?'Route permissioned opportunities into Research pre-screening and follow-up.':'Canaliza oportunidades autorizadas hacia pre-screening y seguimiento de Research.',status:isEn?'Research pipeline':'Pipeline de Research'},
@@ -222,7 +224,8 @@ function ResearchWorkspace({lang,onNavigate,canAccessPage=()=>true}){
   return <section className="research-workspace-view">
     <header className="research-workspace-heading"><div><span>{isEn?'RESEARCH OPERATIONS WORKSPACE':'WORKSPACE DE OPERACIONES DE RESEARCH'}</span><h2>{isEn?'One workspace for every Research handoff':'Un workspace para cada transición de Research'}</h2><p>{isEn?'A focused operating room for studies, recruitment, agreements, protocols and training. Participation remains voluntary and every clinical decision stays with the authorized Research team.':'Un espacio de trabajo enfocado en estudios, reclutamiento, acuerdos, protocolos y capacitación. La participación es voluntaria y toda decisión clínica permanece con el equipo autorizado de Research.'}</p></div><button className="research-workspace-back" onClick={()=>onNavigate('research-overview')}><ArrowLeft size={16}/>{isEn?'Entity overview':'Resumen de la entidad'}</button></header>
     <div className="research-workspace-status"><div><CheckCircle2 size={20}/><span><strong>{isEn?'Workspace ready':'Workspace listo'}</strong><small>{isEn?'Connected to the Eastern Medical Research entity':'Conectado a la entidad Eastern Medical Research'}</small></span></div><div><ShieldCheck size={20}/><span><strong>{isEn?'Permissioned workflow':'Flujo autorizado'}</strong><small>{isEn?'Use approved criteria, scripts and records only':'Usa únicamente criterios, guiones y registros aprobados'}</small></span></div><div><UsersRound size={20}/><span><strong>{isEn?'Shared ownership':'Responsabilidad compartida'}</strong><small>{isEn?'Study, coordination, regulatory and data teams':'Equipos de estudios, coordinación, regulatorio y datos'}</small></span></div></div>
-    <div className="research-workspace-grid">{areas.filter(area=>canAccessPage(area.page)).map(({page,icon:Icon,title,text,status})=><button key={page} className="research-workspace-card" onClick={()=>onNavigate(page)}><span className="research-workspace-card-icon"><Icon size={22}/></span><span className="research-workspace-card-copy"><small>{status}</small><strong>{title}</strong><em>{text}</em></span><ArrowRight size={17}/></button>)}</div>
+    <div className="research-workspace-grid">{areas.filter(area=>area.page==='fundamental-studies'||canAccessPage(area.page)).map(({page,icon:Icon,title,text,status})=><button key={page} className="research-workspace-card" onClick={()=>page==='fundamental-studies'?document.getElementById('fundamental-studies')?.scrollIntoView({behavior:'smooth',block:'start'}):onNavigate(page)}><span className="research-workspace-card-icon"><Icon size={22}/></span><span className="research-workspace-card-copy"><small>{status}</small><strong>{title}</strong><em>{text}</em></span><ArrowRight size={17}/></button>)}</div>
+    <FundamentalStudies lang={lang} session={session}/>
     <ResearchWorkspaceIdeas lang={lang} scopeKey="entity-research"/>
     <ResearchWorkspaceItems lang={lang} scopeKey="entity-research"/>
     <WorkspaceResources scopeKey="entity-research" lang={lang} sectionLabel={isEn?'Research Workspace':'Workspace de Research'} quickActions/>
@@ -231,13 +234,13 @@ function ResearchWorkspace({lang,onNavigate,canAccessPage=()=>true}){
   </section>;
 }
 
-export default function EntityWorkspace({definition,section,lang,onNavigate,staffRows=[],renderLeads,canAccessPage=()=>true}){
+export default function EntityWorkspace({definition,section,lang,onNavigate,staffRows=[],renderLeads,canAccessPage=()=>true,session}){
   const Icon=definition.icon;
   return <div className={`entity-workspace ${definition.tone}`}>
     <header className="entity-workspace-hero"><button onClick={()=>onNavigate('hub')}><ArrowLeft/>{lang==='en'?'Operational Hub':'Operational Hub'}</button><div><span>{definition.eyebrow[lang]}</span><h1>{definition.name}</h1><p>{definition.summary[lang]}</p></div>{definition.logo?<img className="entity-workspace-logo" src={definition.logo} alt={`${definition.name} logo`}/>:<Icon/>}</header>
     <div className="entity-workspace-content">
       {section==='overview'&&<Overview definition={definition} lang={lang} onNavigate={onNavigate} staffRows={staffRows}/>}
-      {section==='workspace'&&definition.key==='research'&&<ResearchWorkspace lang={lang} onNavigate={onNavigate} canAccessPage={canAccessPage}/>}
+      {section==='workspace'&&definition.key==='research'&&<ResearchWorkspace lang={lang} onNavigate={onNavigate} canAccessPage={canAccessPage} session={session}/>}
       {section==='structure'&&<DetailDirectory definition={definition} lang={lang} type="structure"/>}
       {section==='services'&&<DetailDirectory definition={definition} lang={lang} type="services"/>}
       {section==='team'&&<TeamView definition={definition} lang={lang} staffRows={staffRows} onNavigate={onNavigate}/>}

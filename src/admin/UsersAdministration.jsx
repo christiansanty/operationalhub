@@ -19,6 +19,8 @@ const baseModules = isEn => [
   { id:'research-leads:contact:view', label:isEn ? 'Research lead contacts · View' : 'Contactos de leads Research · Ver', group:isEn ? 'Research controls' : 'Controles de Research' },
   { id:'research-studies:view', label:isEn ? 'Research studies · View' : 'Estudios de Research · Ver', group:isEn ? 'Research controls' : 'Controles de Research' },
   { id:'research-studies:manage', label:isEn ? 'Research studies · Manage' : 'Estudios de Research · Gestionar', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-fundamental-studies:view', label:isEn ? 'Fundamental Studies · View' : 'Fundamental Studies · Ver', group:isEn ? 'Research controls' : 'Controles de Research' },
+  { id:'research-fundamental-studies:manage', label:isEn ? 'Fundamental Studies · Manage' : 'Fundamental Studies · Gestionar', group:isEn ? 'Research controls' : 'Controles de Research' },
   { id:'research-sync:manage', label:isEn ? 'Research integrations · Manage' : 'Integraciones de Research · Gestionar', group:isEn ? 'Research controls' : 'Controles de Research' },
   { id:'leads', label:isEn ? 'Leads Center' : 'Centro de Leads', group:isEn ? 'Operations' : 'Operaciones' },
   { id:'protocols', label:isEn ? 'Operational Protocols' : 'Protocolos Operacionales', group:isEn ? 'Operations' : 'Operaciones' },
@@ -37,7 +39,7 @@ const baseModules = isEn => [
 const initials = name => String(name || '').trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join('');
 const blankPermissions = modules => Object.fromEntries(modules.map(module => [module.id, 'none']));
 const permissionsForProfile = (profile, modules, current = {}) => {
-  const researchSensitive = new Set(['research-leads:view','research-leads:manage','research-leads:contact:view','research-studies:view','research-studies:manage','research-sync:manage']);
+  const researchSensitive = new Set(['research-leads:view','research-leads:manage','research-leads:contact:view','research-studies:view','research-studies:manage','research-fundamental-studies:view','research-fundamental-studies:manage','research-sync:manage']);
   if (profile === 'academy') return { ...blankPermissions(modules), academy:'view' };
   if (profile === 'admin') return Object.fromEntries(modules.map(module => [module.id, researchSensitive.has(module.id) ? (current[module.id] || 'none') : 'manage']));
   if (profile === 'owner') return { ...Object.fromEntries(modules.map(module => [module.id, researchSensitive.has(module.id) ? (current[module.id] || 'none') : 'manage'])), corporate:'manage' };

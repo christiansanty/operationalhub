@@ -45,6 +45,26 @@ export function universalStatus() {
   };
 }
 
+export function fundamentalStudyAgentStatus() {
+  const base = universalStatus();
+  return {
+    ...base,
+    module: 'fundamental-studies',
+    agents: [
+      { id: 'opportunity-scout', name: 'Opportunity Scout', purpose: 'Search authorized sources and return source-linked opportunities for human review.' },
+      { id: 'eligibility-reviewer', name: 'Eligibility Reviewer', purpose: 'Compare criteria against approved information without inventing missing facts.' },
+      { id: 'document-organizer', name: 'Document Organizer', purpose: 'Suggest document categories while preserving the original file.' },
+      { id: 'paperwork-preparer', name: 'Paperwork Preparer', purpose: 'Prepare drafts and flag incomplete fields; never submit a request.' },
+      { id: 'follow-up-coordinator', name: 'Follow-up Coordinator', purpose: 'Prepare status updates and reminders for the assigned owner.' },
+    ],
+    humanApprovalRequired: true,
+    blockedActions: ['submit_application', 'accept_terms', 'certify_information', 'final_portal_submission'],
+    note: base.configured
+      ? 'Universal configuration exists, but live agent execution still requires an explicit Research agent registry and tool contract.'
+      : 'Universal Master RPA is not configured and verified. No external request or portal action is made.',
+  };
+}
+
 export function parseEmConnectResearchEvent(payloadText, signature) {
   const secret = process.env.RESEARCH_EM_CONNECT_WEBHOOK_SECRET?.trim();
   if (!secret) { const error = new Error('EM Connect Research webhook secret is not configured.'); error.statusCode = 503; throw error; }
