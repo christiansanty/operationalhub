@@ -45,18 +45,32 @@ export default function ITWorkspace({ lang = 'en', session }) {
   const [proposalAdminForm, setProposalAdminForm] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  const readResponse = async (response, fallback) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || fallback);
+    return payload;
+  };
+
+  const loadProposals = async () => {
+    const payload = await readResponse(
+      await fetch('/api/it/proposals', { cache: 'no-store' }),
+      isEn ? 'IT ideas are not available.' : 'Las ideas de IT no están disponibles.',
+    );
+    setProposals(payload.proposals || []);
+    setFullAccess(Boolean(payload.fullAccess));
+    return payload;
+  };
+
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [catalogResponse, scopeResponse, roadmapResponse, proposalResponse] = await Promise.all([
-        fetch('/api/it/catalog', { cache: 'no-store' }), fetch('/api/it/scope', { cache: 'no-store' }), fetch('/api/it/roadmap', { cache: 'no-store' }), fetch('/api/it/proposals', { cache: 'no-store' }),
-      ]);
-      const catalogPayload = await catalogResponse.json();
-      const scopePayload = await scopeResponse.json();
-      const roadmapPayload = await roadmapResponse.json();
-      const proposalPayload = await proposalResponse.json();
-      if (!catalogResponse.ok || !scopeResponse.ok || !roadmapResponse.ok || !proposalResponse.ok) throw new Error(catalogPayload.error || scopePayload.error || roadmapPayload.error || proposalPayload.error || (isEn ? 'IT data is not available.' : 'Los datos de IT no están disponibles.'));
-      setApplications(catalogPayload.applications || []); setScopes(scopePayload.scopes || []); setRoadmap(roadmapPayload.roadmap || []); setProposals(proposalPayload.proposals || []); setFullAccess(Boolean(proposalPayload.fullAccess));
+      const catalogPayload = await readResponse(await fetch('/api/it/catalog', { cache: 'no-store' }), isEn ? 'IT applications are not available.' : 'Las aplicaciones de IT no están disponibles.');
+      setApplications(catalogPayload.applications || []);
+      const scopePayload = await readResponse(await fetch('/api/it/scope', { cache: 'no-store' }), isEn ? 'Application scope is not available.' : 'El scope de aplicaciones no está disponible.');
+      setScopes(scopePayload.scopes || []);
+      const roadmapPayload = await readResponse(await fetch('/api/it/roadmap', { cache: 'no-store' }), isEn ? 'The IT roadmap is not available.' : 'El roadmap de IT no está disponible.');
+      setRoadmap(roadmapPayload.roadmap || []);
+      await loadProposals();
     } catch (loadError) { setError(loadError.message); }
     finally { setLoading(false); }
   };
@@ -82,10 +96,16 @@ export default function ITWorkspace({ lang = 'en', session }) {
   const submitProposal = async event => {
     event.preventDefault(); setSaving(true); setError('');
     try {
-      const response = await fetch('/api/it/proposals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(proposalForm) });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || (isEn ? 'Idea could not be submitted.' : 'No se pudo enviar la idea.'));
-      setProposalForm(blankProposal); setProposalOpen(false); await load();
+      const payload = await readResponse(
+        await fetch('/api/it/proposals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(proposalForm) }),
+        isEn ? 'Idea could not be submitted.' : 'No se pudo enviar la idea.',
+      );
+      if (!payload.proposal?.id) throw new Error(isEn ? 'The idea was not confirmed by the server.' : 'El servidor no confirmó el guardado de la idea.');
+      setProposals(current => [payload.proposal, ...current.filter(item => item.id !== payload.proposal.id)]);
+      setProposalForm({ ...blankProposal });
+      setProposalOpen(false);
+      setError('');
+      await loadProposals();
     } catch (saveError) { setError(saveError.message); }
     finally { setSaving(false); }
   };
