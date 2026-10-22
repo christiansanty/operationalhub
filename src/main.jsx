@@ -22,6 +22,7 @@ import CredentialingCenter, { ContractingCenter } from './credentialing/Credenti
 import ResearchModule from './research/ResearchModule.jsx';
 import ResearchAgreements from './research/ResearchAgreements.jsx';
 import ITWorkspace from './it/ITWorkspace.jsx';
+import WorkspaceResources from './shared/WorkspaceResources.jsx';
 import EmployeePackagePortal from './hr/EmployeePackagePortal.jsx';
 import ApplicationEcosystem from './apps/ApplicationEcosystem.jsx';
 import { applicationPermissionModules } from './apps/applicationRegistry.js';
@@ -755,6 +756,33 @@ function Certificate({lang,onBack,learner}) {
 
 const emptyOperationalData=()=>({providers:[],contracts:[],licenses:[],entities:[],status:emmsoSourceStatus});
 
+const workspaceScopeForPage = page => {
+  const context = parseEntityPage(page);
+  if (context) return `entity-${context.definition.key}`;
+  return ({
+    hub: 'hub', it: 'it', corporate: 'corporate', leads: 'leads', protocols: 'protocols',
+    licenses: 'licenses', 'doctor-licenses': 'doctor-licenses', credentialing: 'credentialing',
+    contracting: 'contracting', 'research-agreements': 'research', staff: 'human-resources',
+    users: 'admin-users', academy: 'academy', learning: 'learning', systems: 'systems',
+    certificates: 'certificates', team: 'team',
+  })[page] || page;
+};
+
+const workspaceSectionLabel = (page, lang) => {
+  const labels = {
+    hub: ['Operational Hub', 'Operational Hub'], it: ['IT', 'IT'], corporate: ['Corporate Executive Workspace', 'Espacio Ejecutivo Corporate'],
+    leads: ['Leads', 'Leads'], protocols: ['Operational Protocols', 'Protocolos Operacionales'], licenses: ['Licenses', 'Licencias'],
+    'doctor-licenses': ['Doctor Licenses', 'Licencias Médicas'], credentialing: ['Credentialing', 'Credentialing'], contracting: ['Contracting', 'Contratación'],
+    research: ['Eastern Medical Research', 'Eastern Medical Research'], staff: ['Human Resources', 'Recursos Humanos'], users: ['Administration', 'Administración'],
+    academy: ['Academy', 'Academy'], learning: ['Learning Library', 'Biblioteca de Aprendizaje'], systems: ['Systems Training', 'Capacitación de Sistemas'],
+    certificates: ['Certificates', 'Certificados'], team: ['Team Progress', 'Progreso del Equipo'],
+  };
+  const entity = parseEntityPage(page);
+  if (entity) return entity.definition.name;
+  const label = labels[workspaceScopeForPage(page)] || labels[page];
+  return label ? label[lang === 'es' ? 1 : 0] : page;
+};
+
 function App(){
   const invitationToken=new URLSearchParams(globalThis.location?.search||'').get('invite')||'';
   const employeePackageToken=new URLSearchParams(globalThis.location?.search||'').get('employee_package')||'';
@@ -863,12 +891,12 @@ function App(){
   if(entityContext)return <div className="app-shell">
     <Sidebar page={page} setPage={navigate} lang={lang} onLogout={logout} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/>
     {mobile&&<><div className="mobile-overlay" onClick={()=>setMobile(false)}/><Sidebar mobile page={page} setPage={navigate} lang={lang} onLogout={logout} close={()=>setMobile(false)} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/></>}
-    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><AppNavigationBar lang={lang} page={page} canBack={appBackStack.length>0} canForward={appForwardStack.length>0} onBack={()=>moveAppHistory(-1)} onForward={()=>moveAppHistory(1)}/><EntityWorkspace definition={entityContext.definition} section={entityContext.section} lang={lang} onNavigate={navigate} staffRows={operationalData.providers} canAccessPage={canAccessPage} renderLeads={()=>(entityContext.definition.key==='research'?<ResearchModule lang={lang} session={session}/>:<Leads lang={lang} initialService={entityContext.definition.service} businessTitle={entityContext.definition.name} embedded/>)}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Operational source · Airtable EM-MSO':'Fuente operacional · Airtable EM-MSO'}</footer></div>
+    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><AppNavigationBar lang={lang} page={page} canBack={appBackStack.length>0} canForward={appForwardStack.length>0} onBack={()=>moveAppHistory(-1)} onForward={()=>moveAppHistory(1)}/><EntityWorkspace definition={entityContext.definition} section={entityContext.section} lang={lang} onNavigate={navigate} staffRows={operationalData.providers} canAccessPage={canAccessPage} renderLeads={()=>(entityContext.definition.key==='research'?<ResearchModule lang={lang} session={session}/>:<Leads lang={lang} initialService={entityContext.definition.service} businessTitle={entityContext.definition.name} embedded/>)} /><WorkspaceResources scopeKey={workspaceScopeForPage(page)} lang={lang} sectionLabel={workspaceSectionLabel(page,lang)}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Operational source · Airtable EM-MSO':'Fuente operacional · Airtable EM-MSO'}</footer></div>
   </div>;
   if(page==='protocols')return <div className="app-shell">
     <Sidebar page={page} setPage={navigate} lang={lang} onLogout={logout} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/>
     {mobile&&<><div className="mobile-overlay" onClick={()=>setMobile(false)}/><Sidebar mobile page={page} setPage={navigate} lang={lang} onLogout={logout} close={()=>setMobile(false)} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/></>}
-    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><AppNavigationBar lang={lang} page={page} canBack={appBackStack.length>0} canForward={appForwardStack.length>0} onBack={()=>moveAppHistory(-1)} onForward={()=>moveAppHistory(1)}/><OperationalProtocols lang={lang}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Prototype · Operational data requires final validation':'Prototipo · Los datos operativos requieren validación final'}</footer></div>
+    <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main><AppNavigationBar lang={lang} page={page} canBack={appBackStack.length>0} canForward={appForwardStack.length>0} onBack={()=>moveAppHistory(-1)} onForward={()=>moveAppHistory(1)}/><OperationalProtocols lang={lang}/><WorkspaceResources scopeKey={workspaceScopeForPage(page)} lang={lang} sectionLabel={workspaceSectionLabel(page,lang)}/></main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Prototype · Operational data requires final validation':'Prototipo · Los datos operativos requieren validación final'}</footer></div>
   </div>;
   return <div className="app-shell">
     <Sidebar page={page} setPage={navigate} lang={lang} onLogout={logout} academyOnly={academyOnly} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} session={session}/>
@@ -876,6 +904,7 @@ function App(){
     <div className="main-shell"><Header lang={lang} setLang={setLanguage} onMenu={()=>setMobile(true)} onNavigate={navigate} currentPage={page} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage}/><main>
       <AppNavigationBar lang={lang} page={page} canBack={appBackStack.length>0} canForward={appForwardStack.length>0} onBack={()=>moveAppHistory(-1)} onForward={()=>moveAppHistory(1)}/>
       {page==='hub'&&<HubDashboard lang={lang} setPage={navigate} operationalData={operationalData} canAccessCorporate={canAccessCorporate} canAccessAdmin={canAccessAdmin} canAccessPage={canAccessPage} canAccessApplication={applicationId=>canSessionAccessApplication(session,applicationId)}/>} {page==='it'&&<ITWorkspace lang={lang} session={session} canAccessAdmin={canAccessAdmin}/>} {page==='leads'&&<Leads lang={lang}/>} {page==='licenses'&&<Licenses lang={lang} licenseRowsData={operationalData.licenses} staffRowsData={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='doctor-licenses'&&<Licenses lang={lang} initialCategory="doctors" licenseRowsData={operationalData.licenses} staffRowsData={operationalData.providers} sourceStatus={operationalData.status}/>} {page==='credentialing'&&<CredentialingCenter lang={lang} providers={operationalData.providers} entities={operationalData.entities} sourceStatus={operationalData.status} canManage={canManageCredentialing} onSnapshot={applyOperationalSnapshot}/>} {page==='contracting'&&<ContractingCenter lang={lang} contracts={operationalData.contracts} entities={operationalData.entities} sourceStatus={operationalData.status} canManage={canManageContracting} onSnapshot={applyOperationalSnapshot}/>} {page==='research-agreements'&&<ResearchAgreements lang={lang} session={session}/>} {page==='staff'&&<HumanResources lang={lang} employees={operationalData.providers} sourceStatus={operationalData.status} session={session} canManage={canManageHumanResources}/>} {page==='corporate'&&canAccessCorporate&&<CorporateHub lang={lang} ownerName={session?.name}/>} {page==='users'&&<ServerUsersAdministration lang={lang} session={session} canManage={canManageUsers}/>} {page==='academy'&&<Dashboard lang={lang} onOpen={openCourse} setPage={navigate} session={session} canManageAcademy={canManageAcademy} academyRecord={academyRecord}/>} {page==='learning'&&<Library lang={lang} onOpen={openCourse} academyRecord={academyRecord}/>} {page==='systems'&&<SystemsTraining lang={lang} onOpen={openCourse}/>} {page==='certificates'&&<Certificate lang={lang} learner={activeLearner} onBack={()=>navigate('academy')}/>} {page==='team'&&canManageAcademy&&<TeamProgress lang={lang}/>}
+      <WorkspaceResources scopeKey={workspaceScopeForPage(page)} lang={lang} sectionLabel={workspaceSectionLabel(page,lang)}/>
     </main><AIAssistant lang={lang} page={page} onNavigate={navigate}/><footer className="prototype-note"><ShieldCheck size={13}/>{lang==='en'?'Operational source · Airtable EM-MSO':'Fuente operacional · Airtable EM-MSO'}</footer></div>
   </div>
 }

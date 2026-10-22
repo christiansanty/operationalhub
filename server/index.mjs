@@ -35,6 +35,7 @@ import {
   updateHrComplianceItem, updateHrEmployeeClassification,
 } from './hr-dossier-store.mjs';
 import { createDocusignEnvelope, downloadDocusignCombinedDocument, getDocusignStatus, verifyDocusignConnectSignature } from './docusign.mjs';
+import { createWorkspaceResource, deleteWorkspaceResource, getWorkspaceResource, listWorkspaceResources } from './workspace-resource-store.mjs';
 import {
   acceptInvitation, deleteAccessUser, getAccessSystemStatus, getInvitation, inviteAccessUser,
   listAccessUsers, loginAccessUser, logoutAccessSession, resendAccessInvitation,
@@ -252,6 +253,51 @@ function corporateActor(request) {
   return { actor, status: 403 };
 }
 
+const workspaceResourcePermissionKeys = {
+  hub: 'dashboard',
+  dashboard: 'dashboard',
+  leads: 'leads',
+  protocols: 'protocols',
+  licenses: 'licenses',
+  'doctor-licenses': 'doctor-licenses',
+  credentialing: 'credentialing',
+  contracting: 'contracting',
+  research: 'entity-research',
+  'entity-medical': 'entity-medical',
+  'entity-care305': 'entity-care305',
+  'entity-aesthetics': 'entity-aesthetics',
+  'entity-seven': 'entity-seven',
+  'entity-research': 'entity-research',
+  'human-resources': 'human-resources',
+  'admin-users': 'admin-users',
+  academy: 'academy',
+  learning: 'academy',
+  systems: 'academy',
+  certificates: 'academy',
+  team: 'academy',
+};
+
+function workspaceResourceActor(request, scopeKey, required = 'view') {
+  const actor = requestIdentity(request);
+  if (!actor) return { actor: null, status: 401 };
+  const scope = String(scopeKey || '').trim().toLowerCase();
+  if (scope === 'corporate') {
+    const access = corporateActor(request);
+    if (access.status !== 200) return access;
+    return { actor, status: 200 };
+  }
+  if (scope === 'it') {
+    if (required === 'manage' && !itManager(request)) return { actor, status: 403 };
+    return { actor, status: 200 };
+  }
+  if (scope === 'admin-users') {
+    return adminActor(request, required === 'manage') ? { actor, status: 200 } : { actor, status: 403 };
+  }
+  const permissionKey = workspaceResourcePermissionKeys[scope];
+  if (!permissionKey || !hasModuleAccess(actor, permissionKey, required)) return { actor, status: 403 };
+  return { actor, status: 200 };
+}
+
 async function readBuffer(request,maxBytes=131072){
   const chunks=[];let size=0;
   for await(const chunk of request){size+=chunk.length;if(size>maxBytes)throw new Error('Request body too large');chunks.push(chunk)}
@@ -391,6 +437,36 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/api/ai/chat') {
       const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});
       return json(response, 200, await runOperationalAi(await readJson(request, 256 * 1024),actor));
+    }
+    if (request.method === 'GET' && /^\/api\/workspace-resources\/[^/]+\/file$/.test(url.pathname)) {
+      const id = decodeURIComponent(url.pathname.split('/')[3]);
+      const resource = getWorkspaceResource(id);
+      const resourceAccess = workspaceResourceActor(request, resource?.scope_key, 'view');
+      if (resourceAccess.status !== 200) return json(response, resourceAccess.status, { error: resourceAccess.status === 401 ? 'Authentication required' : 'Resource access required' });
+      if (!resource?.file_path || await access(resource.file_path).then(() => false).catch(() => true)) return json(response, 404, { error: 'Resource file not found' });
+      const safeName = (resource.filename || 'workspace-resource').replace(/["\r\n]/g, '_');
+      response.writeHead(200, { 'content-type': resource.content_type || 'application/octet-stream', 'content-disposition': `inline; filename="${safeName}"`, 'cache-control': 'private, max-age=300' });
+      return createReadStream(resource.file_path).pipe(response);
+    }
+    if (request.method === 'GET' && url.pathname === '/api/workspace-resources') {
+      const scopeKey = url.searchParams.get('scope') || '';
+      const resourceAccess = workspaceResourceActor(request, scopeKey, 'view');
+      if (resourceAccess.status !== 200) return json(response, resourceAccess.status, { error: resourceAccess.status === 401 ? 'Authentication required' : 'Resource access required' });
+      return json(response, 200, { resources: listWorkspaceResources(scopeKey), canManage: workspaceResourceActor(request, scopeKey, 'manage').status === 200 });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/workspace-resources') {
+      const body = await readJson(request, 42 * 1024 * 1024);
+      const resourceAccess = workspaceResourceActor(request, body.scopeKey, 'manage');
+      if (resourceAccess.status !== 200) return json(response, resourceAccess.status, { error: resourceAccess.status === 401 ? 'Authentication required' : 'Resource Manage access required' });
+      return json(response, 201, { resource: await createWorkspaceResource(body, resourceAccess.actor) });
+    }
+    if (request.method === 'DELETE' && /^\/api\/workspace-resources\/[^/]+$/.test(url.pathname)) {
+      const id = decodeURIComponent(url.pathname.split('/')[3]);
+      const resource = getWorkspaceResource(id);
+      const resourceAccess = workspaceResourceActor(request, resource?.scope_key, 'manage');
+      if (resourceAccess.status !== 200) return json(response, resourceAccess.status, { error: resourceAccess.status === 401 ? 'Authentication required' : 'Resource Manage access required' });
+      const deleted = await deleteWorkspaceResource(id);
+      return json(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'Resource not found' });
     }
     if (request.method === 'GET' && url.pathname === '/api/corporate/records') {
       const access = corporateActor(request); if (access.status !== 200) return json(response, access.status, { error: access.status === 401 ? 'Authentication required' : 'Corporate executive access required' });
