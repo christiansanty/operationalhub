@@ -174,14 +174,14 @@ function arrayValue(value, maxItems = 20) {
 function audit(actorId, action, targetId, details = {}) { recordAccessAuditEvent(actorId, action, targetId, details); }
 
 function publicApplication(row) {
-  return { id: row.id, name: row.name, description: parseJson(row.description_json, {}), source: row.source, accessUrl: row.access_url || '', repository: row.repository || '', configured: Boolean(row.access_url), updatedAt: row.updated_at };
+  return { id: row.id, name: row.name, description: parseJson(row.description_json, {}), source: row.source, accessUrl: row.access_url || '', repository: row.repository || '', configured: Boolean(row.access_url), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 function publicRoadmap(row) {
   const overdue = Boolean(row.due_at && new Date(row.due_at).getTime() < Date.now() && row.status !== 'COMPLETED');
   const noEvidence = !row.last_verified_at;
   return {
-    id: row.id, applicationId: row.application_id, applicationName: row.application_name, applicationSource: row.application_source,
+    id: row.id, applicationId: row.application_id, applicationName: row.application_name, applicationSource: row.application_source, createdAt: row.created_at,
     accessUrl: row.access_url || '', repository: row.repository || '', phase: row.phase, priority: row.priority, progress: row.progress,
     status: row.status, owner: row.owner || '', dueAt: row.due_at || '', milestones: parseJson(row.milestones_json), dependencies: parseJson(row.dependencies_json), blockers: parseJson(row.blockers_json), nextActions: parseJson(row.next_actions_json),
     integrationState: row.integration_state, monitoringState: row.monitoring_state, lastVerifiedAt: row.last_verified_at || '', evidence: { reference: row.evidence_reference || '', source: row.evidence_source || '', note: row.evidence_note || '' }, plannedEnvironments: parseJson(row.planned_environments_json), verifiedEnvironments: parseJson(row.verified_environments_json),

@@ -54,6 +54,7 @@ try {
   assert.equal(roadmap.payload.roadmap.some(row => row.applicationName === 'Medical RPA'), false);
   assert.ok(roadmap.payload.roadmap.some(row => row.applicationName === 'Operational Hub'));
   assert.ok(roadmap.payload.roadmap.some(row => row.applicationName === 'Binium'));
+  assert.ok(roadmap.payload.roadmap.every(row => row.createdAt));
   const firstRoadmapId = roadmap.payload.roadmap[0].id;
   assert.equal((await request('PATCH', `/api/it/roadmap/${firstRoadmapId}`, viewerCookie, { status: 'IN_PROGRESS' })).status, 403);
   assert.equal((await request('PATCH', `/api/it/roadmap/${firstRoadmapId}`, managerCookie, { integrationState: 'LIVE_VERIFIED' })).status, 400);
