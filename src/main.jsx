@@ -303,7 +303,6 @@ function Sidebar({ page, setPage, lang, onLogout, mobile, close, academyOnly=fal
         {adminItems.map(({id,label,icon:Icon})=><button key={id} className={`hub-nav-door admin-nav ${page===id?'active':''}`} onClick={()=>navigate(id)}><span className="sidebar-nav-icon"><Icon size={17}/></span><span>{label}</span><ChevronRight className="nav-door-arrow" size={15}/></button>)}
       </>}
     </nav>
-    <div className="sidebar-help"><CircleHelp size={22}/><strong>{academyContext?(lang==='en'?'Academy support':'Soporte de Academy'):(lang==='en'?'Need help?':'¿Necesitas ayuda?')}</strong><p>{academyContext?(lang==='en'?'Choose a section above or contact the training administrator.':'Elige una sección arriba o contacta al administrador de capacitación.'):(lang==='en'?'Contact the operations administrator.':'Contacta al administrador de operaciones.')}</p>{academyContext&&canAccessPage('team')?<button onClick={()=>navigate('team')}>{lang==='en'?'Open team progress':'Abrir progreso del equipo'}</button>:!academyContext?<button>{lang==='en'?'Get support':'Obtener ayuda'}</button>:null}</div>
     <div className="sidebar-user"><div className="avatar">{userInitials}</div><div><strong>{userName}</strong><span>{userRole}</span></div><button onClick={onLogout} title={t.logout}><LogOut size={17}/></button></div>
   </aside>
 }
