@@ -25,6 +25,7 @@ export const proposalCategories = ['ERROR', 'IMPROVEMENT', 'NEW_FEATURE', 'INTEG
 const universalCatalog = [
   { id: 'universal', name: 'Universal', description: { en: 'Coordination and monitoring plane. Connector status must be verified before use.', es: 'Plano de coordinación y monitoreo. El estado del conector debe verificarse antes de usarlo.' }, envKey: 'UNIVERSAL_BASE_URL', source: 'Universal catalog' },
   { id: 'operational-hub', name: 'Operational Hub', description: { en: 'Central operational workspace for internal teams.', es: 'Espacio central de operaciones para los equipos internos.' }, envKey: 'OPERATIONAL_HUB_URL', source: 'IT catalog' },
+  { id: 'binium', name: 'Binium', description: { en: 'Binium operational application and connected workflow workspace.', es: 'Aplicación operativa Binium y espacio de flujos conectados.' }, envKey: 'BINIUM_URL', source: 'IT catalog' },
 ];
 
 const retiredCatalogIds = ['art-rpa', 'medical-rpa', 'operational-help'];
