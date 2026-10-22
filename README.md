@@ -51,7 +51,7 @@ Universal is represented as a configuration-required / pending-verification stat
 
 ## IT workspace
 
-The IT section uses a private SQLite-backed roadmap and proposal store. It seeds the existing Operational Hub application registry plus Universal and Operational Help catalog records. RPA workstreams are not applications and are not listed in the IT application roadmap. Blank connector, repository and access-link settings remain visibly unconnected or without evidence; the system never promotes a URL or source-code record to a verified integration state by itself.
+The IT section uses a private SQLite-backed roadmap and proposal store. It seeds the existing Operational Hub application registry plus Operational Hub and Universal catalog records. RPA workstreams are not applications and are not listed in the IT application roadmap. Blank connector, repository and access-link settings remain visibly unconnected or without evidence; the system never promotes a URL or source-code record to a verified integration state by itself.
 
 - `GET /api/it/catalog` — authenticated application catalog with configured links only.
 - `GET /api/it/roadmap` — authenticated read-only roadmap with filters, evidence state and attention flags.
@@ -60,7 +60,7 @@ The IT section uses a private SQLite-backed roadmap and proposal store. It seeds
 - `POST /api/it/proposals` — any active user may submit a server-stored proposal; proposal text rejects patient, PHI, credential and secret terms.
 - `PATCH /api/it/proposals/:id` — requires `it:manage`; status changes and decline explanations are audited.
 
-The IT permission keys are `it:view` and `it:manage`. Entity, contracting, application-launcher and other unrelated permissions do not grant IT management. No email, external notification, repository write, secret change or deployment is performed by this workspace. Optional `UNIVERSAL_BASE_URL`, `OPERATIONAL_HELP_URL` and `IT_REPOSITORY_*` values document future connectors; when blank, the UI reports no connection or no data.
+The IT permission keys are `it:view` and `it:manage`. Entity, contracting, application-launcher and other unrelated permissions do not grant IT management. No email, external notification, repository write, secret change or deployment is performed by this workspace. Optional `UNIVERSAL_BASE_URL`, `OPERATIONAL_HUB_URL` and `IT_REPOSITORY_*` values document future connectors; when blank, the UI reports no connection or no data.
 
 ## Run locally
 
