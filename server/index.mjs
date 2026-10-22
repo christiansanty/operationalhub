@@ -37,6 +37,7 @@ import {
 import { createDocusignEnvelope, downloadDocusignCombinedDocument, getDocusignStatus, verifyDocusignConnectSignature } from './docusign.mjs';
 import { createWorkspaceResource, deleteWorkspaceResource, getWorkspaceResource, listWorkspaceResources } from './workspace-resource-store.mjs';
 import { createResearchWorkspaceIdea, deleteResearchWorkspaceIdea, getResearchWorkspaceIdea, listResearchWorkspaceIdeas, updateResearchWorkspaceIdea } from './research-workspace-store.mjs';
+import { createResearchWorkspaceItem, deleteResearchWorkspaceItem, getResearchWorkspaceItem, listResearchWorkspaceItems, updateResearchWorkspaceItem } from './research-workspace-items-store.mjs';
 import {
   acceptInvitation, deleteAccessUser, getAccessSystemStatus, getInvitation, inviteAccessUser,
   listAccessUsers, loginAccessUser, logoutAccessSession, resendAccessInvitation,
@@ -468,6 +469,26 @@ const server = createServer(async (request, response) => {
       if (ideaAccess.status !== 200) return json(response, ideaAccess.status, { error: ideaAccess.status === 401 ? 'Authentication required' : 'Research workspace Manage access required' });
       if (request.method === 'PATCH') return json(response, existing ? 200 : 404, existing ? { idea: updateResearchWorkspaceIdea(id, await readJson(request, 256 * 1024)) } : { error: 'Research idea not found' });
       if (request.method === 'DELETE') return json(response, deleteResearchWorkspaceIdea(id) ? 200 : 404, { deleted: true });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/research-workspace/items') {
+      const scopeKey = url.searchParams.get('scope') || 'entity-research';
+      const itemAccess = workspaceResourceActor(request, scopeKey, 'view');
+      if (itemAccess.status !== 200) return json(response, itemAccess.status, { error: itemAccess.status === 401 ? 'Authentication required' : 'Research workspace access required' });
+      return json(response, 200, { items: listResearchWorkspaceItems(scopeKey), canCreate: true, canManage: workspaceResourceActor(request, scopeKey, 'manage').status === 200 });
+    }
+    if (request.method === 'POST' && url.pathname === '/api/research-workspace/items') {
+      const body = await readJson(request, 42 * 1024 * 1024);
+      const itemAccess = workspaceResourceActor(request, body.scopeKey || 'entity-research', 'view');
+      if (itemAccess.status !== 200) return json(response, itemAccess.status, { error: itemAccess.status === 401 ? 'Authentication required' : 'Research workspace access required' });
+      return json(response, 201, { item: createResearchWorkspaceItem(body, itemAccess.actor) });
+    }
+    if (/^\/api\/research-workspace\/items\/[^/]+$/.test(url.pathname)) {
+      const id = decodeURIComponent(url.pathname.split('/')[4]);
+      const existing = getResearchWorkspaceItem(id);
+      const itemAccess = workspaceResourceActor(request, existing?.scope_key || 'entity-research', 'manage');
+      if (itemAccess.status !== 200) return json(response, itemAccess.status, { error: itemAccess.status === 401 ? 'Authentication required' : 'Research workspace Manage access required' });
+      if (request.method === 'PATCH') return json(response, existing ? 200 : 404, existing ? { item: updateResearchWorkspaceItem(id, await readJson(request, 42 * 1024 * 1024)) } : { error: 'Research workspace item not found' });
+      if (request.method === 'DELETE') return json(response, deleteResearchWorkspaceItem(id) ? 200 : 404, { deleted: true });
     }
     if (request.method === 'GET' && url.pathname === '/api/workspace-resources') {
       const scopeKey = url.searchParams.get('scope') || '';
