@@ -24,9 +24,10 @@ export const proposalCategories = ['ERROR', 'IMPROVEMENT', 'NEW_FEATURE', 'INTEG
 
 const universalCatalog = [
   { id: 'universal', name: 'Universal', description: { en: 'Coordination and monitoring plane. Connector status must be verified before use.', es: 'Plano de coordinación y monitoreo. El estado del conector debe verificarse antes de usarlo.' }, envKey: 'UNIVERSAL_BASE_URL', source: 'Universal catalog' },
-  { id: 'art-rpa', name: 'Art RPA', description: { en: 'Registered RPA workstream for Art operations.', es: 'Línea RPA registrada para operaciones de Art.' }, envKey: 'ART_RPA_URL', source: 'Universal catalog' },
-  { id: 'medical-rpa', name: 'Medical RPA', description: { en: 'Registered RPA workstream for Medical operations.', es: 'Línea RPA registrada para operaciones Medical.' }, envKey: 'MEDICAL_RPA_URL', source: 'Universal catalog' },
+  { id: 'operational-help', name: 'Operational Help', description: { en: 'Operational support, requests and guidance for internal teams.', es: 'Soporte operativo, solicitudes y orientación para los equipos internos.' }, envKey: 'OPERATIONAL_HELP_URL', source: 'IT catalog' },
 ];
+
+const retiredCatalogIds = ['art-rpa', 'medical-rpa'];
 
 function validUrl(value) {
   try {
@@ -132,6 +133,13 @@ function openDatabase() {
 }
 
 function ensureCatalog(database) {
+  for (const applicationId of retiredCatalogIds) {
+    database.prepare('DELETE FROM it_proposal_history WHERE proposal_id IN (SELECT id FROM it_proposals WHERE application_id = ?)').run(applicationId);
+    database.prepare('DELETE FROM it_proposals WHERE application_id = ?').run(applicationId);
+    database.prepare('DELETE FROM it_roadmap_history WHERE roadmap_id IN (SELECT id FROM it_roadmap_items WHERE application_id = ?)').run(applicationId);
+    database.prepare('DELETE FROM it_roadmap_items WHERE application_id = ?').run(applicationId);
+    database.prepare('DELETE FROM it_applications WHERE id = ?').run(applicationId);
+  }
   const entries = catalogEntries();
   const timestamp = now();
   entries.forEach((entry, index) => {

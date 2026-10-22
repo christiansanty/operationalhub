@@ -50,10 +50,9 @@ try {
 
   const roadmap = await request('GET', '/api/it/roadmap', viewerCookie);
   assert.equal(roadmap.status, 200);
-  assert.ok(roadmap.payload.roadmap.some(row => row.applicationName === 'Art RPA'));
-  assert.ok(roadmap.payload.roadmap.some(row => row.applicationName === 'Medical RPA'));
-  assert.equal(roadmap.payload.roadmap.find(row => row.applicationName === 'Art RPA').integrationState, 'REGISTERED');
-  assert.equal(roadmap.payload.roadmap.find(row => row.applicationName === 'Art RPA').lastVerifiedAt, '');
+  assert.equal(roadmap.payload.roadmap.some(row => row.applicationName === 'Art RPA'), false);
+  assert.equal(roadmap.payload.roadmap.some(row => row.applicationName === 'Medical RPA'), false);
+  assert.ok(roadmap.payload.roadmap.some(row => row.applicationName === 'Operational Help'));
   const firstRoadmapId = roadmap.payload.roadmap[0].id;
   assert.equal((await request('PATCH', `/api/it/roadmap/${firstRoadmapId}`, viewerCookie, { status: 'IN_PROGRESS' })).status, 403);
   assert.equal((await request('PATCH', `/api/it/roadmap/${firstRoadmapId}`, managerCookie, { integrationState: 'LIVE_VERIFIED' })).status, 400);
@@ -61,6 +60,9 @@ try {
 
   const catalog = await request('GET', '/api/it/catalog', viewerCookie);
   assert.equal(catalog.status, 200);
+  assert.equal(catalog.payload.applications.some(application => application.name === 'Art RPA'), false);
+  assert.equal(catalog.payload.applications.some(application => application.name === 'Medical RPA'), false);
+  assert.ok(catalog.payload.applications.some(application => application.name === 'Operational Help'));
   const appId = catalog.payload.applications[0].id;
   const proposalBody = { applicationId: appId, title: 'A safe improvement', description: 'Improve a workflow without confidential records.', expectedOutcome: 'Reduce manual work.', impact: 'Fewer duplicate steps.', suggestedPriority: 'HIGH', category: 'IMPROVEMENT' };
   const created = await request('POST', '/api/it/proposals', viewerCookie, proposalBody);
