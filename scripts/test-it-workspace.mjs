@@ -14,6 +14,7 @@ delete process.env.RESEND_API_KEY;
 delete process.env.INVITATION_FROM_EMAIL;
 delete process.env.VITE_SEVEN_INSURANCE_URL;
 delete process.env.UNIVERSAL_BASE_URL;
+process.env.IT_SCOPE_SYNC_KEY = 'test-scope-key';
 
 let server;
 try {
@@ -66,6 +67,20 @@ try {
   assert.equal(catalog.payload.applications.some(application => application.name === 'Medical RPA'), false);
   assert.ok(catalog.payload.applications.some(application => application.name === 'Operational Hub'));
   assert.ok(catalog.payload.applications.some(application => application.name === 'Binium'));
+  const scope = await request('GET', '/api/it/scope', viewerCookie);
+  assert.equal(scope.status, 200);
+  assert.equal(scope.payload.public, true);
+  assert.ok(scope.payload.scopes.length >= catalog.payload.applications.length);
+  assert.equal(scope.payload.scopes.find(application => application.applicationId === 'universal').applicationName, 'Universal Master RPA');
+  assert.ok(scope.payload.scopes.every(application => application.modules.length > 0));
+  const unauthorizedPush = await fetch(`${baseUrl}/api/integrations/application-push`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ applicationId: 'binium' }) });
+  assert.equal(unauthorizedPush.status, 401);
+  const push = await fetch(`${baseUrl}/api/integrations/application-push`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-it-scope-sync-key': 'test-scope-key' }, body: JSON.stringify({ applicationId: 'binium', version: '1.2.3', commitSha: 'abc123', repository: 'https://github.com/example/binium', scope: { purpose: { en: 'Updated Binium purpose.', es: 'Propósito actualizado de Binium.' }, modules: [{ id: 'workflow', name: { en: 'Workflow', es: 'Flujo' }, summary: { en: 'Updated workflow.', es: 'Flujo actualizado.' }, tools: ['Queue'], aiRole: { en: 'Suggests next steps.', es: 'Sugiere siguientes pasos.' } }], aiAgents: [] } }) });
+  assert.equal(push.status, 200);
+  const pushedScope = await push.json();
+  assert.equal(pushedScope.scope.version, '1.2.3');
+  assert.equal(pushedScope.scope.commitSha, 'abc123');
+  assert.equal(pushedScope.scope.syncState, 'PUSH_RECEIVED');
   const appId = catalog.payload.applications[0].id;
   const proposalBody = { applicationId: appId, title: 'A safe improvement', description: 'Improve a workflow without confidential records.', expectedOutcome: 'Reduce manual work.', impact: 'Fewer duplicate steps.', suggestedPriority: 'HIGH', category: 'IMPROVEMENT' };
   const created = await request('POST', '/api/it/proposals', viewerCookie, proposalBody);

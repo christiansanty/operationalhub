@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { applicationCatalog } from '../src/data/applicationCatalog.js';
+import { applicationScopeById } from '../src/data/applicationScope.js';
 import { recordAccessAuditEvent } from './access-store.mjs';
 
 const databasePath = process.env.OPERATIONAL_HUB_DATABASE_PATH
@@ -23,7 +24,7 @@ export const priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 export const proposalCategories = ['ERROR', 'IMPROVEMENT', 'NEW_FEATURE', 'INTEGRATION', 'OTHER'];
 
 const universalCatalog = [
-  { id: 'universal', name: 'Universal', description: { en: 'Coordination and monitoring plane. Connector status must be verified before use.', es: 'Plano de coordinación y monitoreo. El estado del conector debe verificarse antes de usarlo.' }, envKey: 'UNIVERSAL_BASE_URL', source: 'Universal catalog' },
+  { id: 'universal', name: 'Universal Master RPA', description: { en: 'Coordination and monitoring plane. Connector status must be verified before use.', es: 'Plano de coordinación y monitoreo. El estado del conector debe verificarse antes de usarlo.' }, envKey: 'UNIVERSAL_BASE_URL', source: 'Universal catalog' },
   { id: 'operational-hub', name: 'Operational Hub', description: { en: 'Central operational workspace for internal teams.', es: 'Espacio central de operaciones para los equipos internos.' }, envKey: 'OPERATIONAL_HUB_URL', source: 'IT catalog' },
   { id: 'binium', name: 'Binium', description: { en: 'Binium operational application and connected workflow workspace.', es: 'Aplicación operativa Binium y espacio de flujos conectados.' }, envKey: 'BINIUM_URL', source: 'IT catalog' },
 ];
@@ -124,6 +125,28 @@ function openDatabase() {
       changed_fields_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS it_application_scopes (
+      application_id TEXT PRIMARY KEY REFERENCES it_applications(id) ON DELETE CASCADE,
+      scope_json TEXT NOT NULL,
+      version TEXT NOT NULL DEFAULT '1.0.0',
+      commit_sha TEXT,
+      repository TEXT,
+      source TEXT NOT NULL,
+      sync_state TEXT NOT NULL DEFAULT 'CATALOG',
+      last_synced_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS it_scope_sync_events (
+      id TEXT PRIMARY KEY,
+      application_id TEXT NOT NULL REFERENCES it_applications(id) ON DELETE CASCADE,
+      commit_sha TEXT,
+      repository TEXT,
+      source TEXT NOT NULL,
+      sync_state TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_it_scope_sync_events_application ON it_scope_sync_events(application_id, created_at);
   `);
   for (const statement of [
     "ALTER TABLE it_roadmap_items ADD COLUMN planned_environments_json TEXT NOT NULL DEFAULT '[]'",
@@ -149,6 +172,18 @@ function ensureCatalog(database) {
     const application = database.prepare('SELECT id FROM it_applications WHERE id = ?').get(entry.id);
     database.prepare(`INSERT OR IGNORE INTO it_roadmap_items (id,application_id,phase,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
       .run(randomUUID(), application.id, 'Registered', 'MEDIUM', 0, 'NOT_STARTED', null, null, '[]', '[]', '[]', '[]', 'REGISTERED', 'NOT_CONNECTED', null, null, null, 'No verification evidence recorded.', '[]', '[]', index, 'system:catalog', timestamp, timestamp);
+    const scopeEntry = applicationScopeById[entry.id];
+    if (scopeEntry) {
+      const normalizedScope = normalizeScope(scopeEntry);
+      const currentScope = database.prepare('SELECT source FROM it_application_scopes WHERE application_id = ?').get(application.id);
+      if (!currentScope) {
+        database.prepare('INSERT INTO it_application_scopes (application_id,scope_json,version,commit_sha,repository,source,sync_state,last_synced_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
+          .run(application.id, JSON.stringify(normalizedScope), scopeEntry.version || '1.0.0', null, entry.repository || null, 'catalog', 'CATALOG', timestamp, timestamp, timestamp);
+      } else if (currentScope.source === 'catalog') {
+        database.prepare('UPDATE it_application_scopes SET scope_json=?,version=?,repository=?,updated_at=? WHERE application_id=?')
+          .run(JSON.stringify(normalizedScope), scopeEntry.version || '1.0.0', entry.repository || null, timestamp, application.id);
+      }
+    }
   });
 }
 
@@ -171,6 +206,41 @@ function arrayValue(value, maxItems = 20) {
   const values = Array.isArray(value) ? value.slice(0, maxItems) : [];
   return values.map(item => safeText(item, 240));
 }
+
+function scopeText(value, max = 500) {
+  const text = clean(value, max);
+  if (/(password|passcode|secret|token|api[_ -]?key|ssn|social security|date of birth|dob|medical record|mrn)/i.test(text)) {
+    const error = new Error('Remove credentials or confidential records from the public application scope.'); error.statusCode = 400; throw error;
+  }
+  return text;
+}
+
+function localizedScopeText(value, max = 700) {
+  const input = value && typeof value === 'object' ? value : { en: value, es: value };
+  const en = scopeText(input.en || input.es, max);
+  const es = scopeText(input.es || input.en, max);
+  if (!en && !es) { const error = new Error('Application scope text is missing.'); error.statusCode = 400; throw error; }
+  return { en, es };
+}
+
+function normalizeScope(scope) {
+  const source = scope && typeof scope === 'object' ? scope : {};
+  const modules = Array.isArray(source.modules) ? source.modules.slice(0, 100).map((module, index) => ({
+    id: scopeText(module?.id || `module-${index + 1}`, 120),
+    name: localizedScopeText(module?.name || module?.title, 180),
+    summary: localizedScopeText(module?.summary || module?.description, 1000),
+    tools: (Array.isArray(module?.tools) ? module.tools : []).slice(0, 40).map(tool => scopeText(tool, 180)).filter(Boolean),
+    aiRole: localizedScopeText(module?.aiRole || module?.agentFunction || module?.aiFunction, 1000),
+  })) : [];
+  if (!modules.length) { const error = new Error('Application scope must include at least one module.'); error.statusCode = 400; throw error; }
+  const aiAgents = (Array.isArray(source.aiAgents) ? source.aiAgents : []).slice(0, 40).map((agent, index) => ({
+    id: scopeText(agent?.id || `agent-${index + 1}`, 120),
+    name: localizedScopeText(agent?.name || agent?.title, 180),
+    function: localizedScopeText(agent?.function || agent?.description, 1000),
+  }));
+  return { purpose: localizedScopeText(source.purpose || source.description, 1200), modules, aiAgents };
+}
+
 function audit(actorId, action, targetId, details = {}) { recordAccessAuditEvent(actorId, action, targetId, details); }
 
 function publicApplication(row) {
@@ -197,6 +267,60 @@ export function listItApplications() {
   const database = openDatabase();
   try { return database.prepare('SELECT * FROM it_applications ORDER BY name').all().map(publicApplication); }
   finally { database.close(); }
+}
+
+function publicScope(row) {
+  return {
+    applicationId: row.application_id,
+    applicationName: row.application_name,
+    applicationSource: row.application_source,
+    accessUrl: row.access_url || '',
+    repository: row.repository || row.scope_repository || '',
+    configured: Boolean(row.access_url),
+    version: row.version || '1.0.0',
+    commitSha: row.commit_sha || '',
+    source: row.scope_source || 'catalog',
+    syncState: row.sync_state || 'CATALOG',
+    lastSyncedAt: row.last_synced_at || '',
+    updatedAt: row.scope_updated_at || row.updated_at || '',
+    purpose: parseJson(row.scope_json, {}).purpose || { en: '', es: '' },
+    modules: parseJson(row.scope_json, {}).modules || [],
+    aiAgents: parseJson(row.scope_json, {}).aiAgents || [],
+  };
+}
+
+function scopeRow(database, applicationId) {
+  return database.prepare(`SELECT s.*, a.name AS application_name, a.source AS application_source, a.access_url, a.repository, s.repository AS scope_repository, s.source AS scope_source, s.updated_at AS scope_updated_at FROM it_application_scopes s JOIN it_applications a ON a.id = s.application_id WHERE s.application_id = ?`).get(applicationId);
+}
+
+export function listItApplicationScopes() {
+  const database = openDatabase();
+  try {
+    return database.prepare(`SELECT s.*, a.name AS application_name, a.source AS application_source, a.access_url, a.repository, s.repository AS scope_repository, s.source AS scope_source, s.updated_at AS scope_updated_at FROM it_application_scopes s JOIN it_applications a ON a.id = s.application_id ORDER BY a.name`).all().map(publicScope);
+  } finally { database.close(); }
+}
+
+export function syncItApplicationScope(payload, actorId = 'integration:application-push') {
+  const applicationId = scopeText(payload.applicationId, 120);
+  const database = openDatabase();
+  try {
+    const application = database.prepare('SELECT id FROM it_applications WHERE id = ?').get(applicationId);
+    if (!application) { const error = new Error('Application is not registered in the IT catalog.'); error.statusCode = 404; throw error; }
+    const current = scopeRow(database, applicationId);
+    const normalizedScope = payload.scope ? normalizeScope(payload.scope) : parseJson(current?.scope_json, {});
+    const version = scopeText(payload.version || current?.version || '1.0.0', 80);
+    const commitSha = nullable(scopeText(payload.commitSha || payload.commit || current?.commit_sha || '', 160), 160);
+    const repository = nullable(scopeText(payload.repository || current?.scope_repository || '', 500), 500);
+    const source = scopeText(payload.source || 'application-push', 160) || 'application-push';
+    const syncState = 'PUSH_RECEIVED';
+    const timestamp = now();
+    database.prepare('UPDATE it_application_scopes SET scope_json=?,version=?,commit_sha=?,repository=?,source=?,sync_state=?,last_synced_at=?,updated_at=? WHERE application_id=?')
+      .run(JSON.stringify(normalizedScope), version, commitSha, repository, source, syncState, timestamp, timestamp, applicationId);
+    database.prepare('INSERT INTO it_scope_sync_events (id,application_id,commit_sha,repository,source,sync_state,created_at) VALUES (?,?,?,?,?,?,?)')
+      .run(randomUUID(), applicationId, commitSha, repository, source, syncState, timestamp);
+    audit(actorId, 'it_scope_synced', applicationId, { applicationId, version, commitSha, source, syncState });
+    return publicScope(scopeRow(database, applicationId));
+  } finally { database.close(); }
 }
 
 export function listItRoadmap(filters = {}) {

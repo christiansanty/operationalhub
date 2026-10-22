@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import './it-workspace.css';
 import OperationalRoadmap from '../roadmap/OperationalRoadmap.jsx';
+import ApplicationScopeDirectory from './ApplicationScopeDirectory.jsx';
 
 const integrationStates = ['REGISTERED', 'CONFIGURED', 'CONNECTOR_CONFIGURED', 'LOCAL_VERIFIED', 'SANDBOX_VERIFIED', 'LIVE_VERIFIED'];
 const monitoringStates = ['NOT_CONNECTED', 'CONFIGURED', 'MONITORING_VERIFIED'];
@@ -36,6 +37,7 @@ export default function ITWorkspace({ lang = 'en', session, canAccessAdmin = fal
   const isEn = lang === 'en';
   const canManage = session?.permissions?.['it:manage'] === 'manage';
   const [applications, setApplications] = useState([]);
+  const [scopes, setScopes] = useState([]);
   const [roadmap, setRoadmap] = useState([]);
   const [proposals, setProposals] = useState([]);
   const [fullAccess, setFullAccess] = useState(false);
@@ -51,21 +53,41 @@ export default function ITWorkspace({ lang = 'en', session, canAccessAdmin = fal
   const [selectedProposal, setSelectedProposal] = useState(null);
   const [proposalAdminForm, setProposalAdminForm] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [scopeLoading, setScopeLoading] = useState(false);
 
   const load = async () => {
     setLoading(true); setError('');
     try {
-      const [catalogResponse, roadmapResponse, proposalResponse] = await Promise.all([
-        fetch('/api/it/catalog', { cache: 'no-store' }), fetch('/api/it/roadmap', { cache: 'no-store' }), fetch('/api/it/proposals', { cache: 'no-store' }),
+      const [catalogResponse, scopeResponse, roadmapResponse, proposalResponse] = await Promise.all([
+        fetch('/api/it/catalog', { cache: 'no-store' }), fetch('/api/it/scope', { cache: 'no-store' }), fetch('/api/it/roadmap', { cache: 'no-store' }), fetch('/api/it/proposals', { cache: 'no-store' }),
       ]);
-      const catalogPayload = await catalogResponse.json(); const roadmapPayload = await roadmapResponse.json(); const proposalPayload = await proposalResponse.json();
-      if (!catalogResponse.ok || !roadmapResponse.ok || !proposalResponse.ok) throw new Error(catalogPayload.error || roadmapPayload.error || proposalPayload.error || (isEn ? 'IT data is not available.' : 'Los datos de IT no están disponibles.'));
-      setApplications(catalogPayload.applications || []); setRoadmap(roadmapPayload.roadmap || []); setProposals(proposalPayload.proposals || []); setFullAccess(Boolean(proposalPayload.fullAccess));
+      const catalogPayload = await catalogResponse.json(); const scopePayload = await scopeResponse.json(); const roadmapPayload = await roadmapResponse.json(); const proposalPayload = await proposalResponse.json();
+      if (!catalogResponse.ok || !scopeResponse.ok || !roadmapResponse.ok || !proposalResponse.ok) throw new Error(catalogPayload.error || scopePayload.error || roadmapPayload.error || proposalPayload.error || (isEn ? 'IT data is not available.' : 'Los datos de IT no están disponibles.'));
+      setApplications(catalogPayload.applications || []); setScopes(scopePayload.scopes || []); setRoadmap(roadmapPayload.roadmap || []); setProposals(proposalPayload.proposals || []); setFullAccess(Boolean(proposalPayload.fullAccess));
     } catch (loadError) { setError(loadError.message); }
     finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
+
+  const loadScope = async () => {
+    setScopeLoading(true);
+    try {
+      const response = await fetch('/api/it/scope', { cache: 'no-store' });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || (isEn ? 'Application scope is not available.' : 'El scope de aplicaciones no está disponible.'));
+      setScopes(payload.scopes || []);
+    } catch (scopeError) {
+      setError(scopeError.message);
+    } finally {
+      setScopeLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const interval = setInterval(loadScope, 60000);
+    return () => clearInterval(interval);
+  }, []);
 
   const visibleRoadmap = useMemo(() => roadmap.filter(row => {
     const query = filters.query.trim().toLowerCase();
@@ -126,6 +148,7 @@ export default function ITWorkspace({ lang = 'en', session, canAccessAdmin = fal
     <div className="it-boundary"><ShieldCheck size={19}/><div><strong>{isEn ? 'Evidence and privacy boundary' : 'Límite de evidencia y privacidad'}</strong><span>{isEn ? 'No connector means No conectado. Code, a URL or a registration does not prove verification. Do not enter patient data, PHI, passwords, tokens or secrets.' : 'Sin conector significa No conectado. El código, una URL o un registro no prueban verificación. No ingreses datos de pacientes, PHI, contraseñas, tokens ni secretos.'}</span></div></div>
     {error && <div className="it-error"><AlertTriangle size={16}/>{error}</div>}
     <section className="it-kpis"><article><Cpu/><div><strong>{applications.length}</strong><span>{isEn ? 'Catalog applications' : 'Aplicaciones catalogadas'}</span></div></article><article><CheckCircle2/><div><strong>{verified}/{roadmap.length}</strong><span>{isEn ? 'With verification evidence' : 'Con evidencia de verificación'}</span></div></article><article><AlertTriangle/><div><strong>{blocked}</strong><span>{isEn ? 'Blocked' : 'Bloqueadas'}</span></div></article><article><Clock3/><div><strong>{overdue}</strong><span>{isEn ? 'Overdue' : 'Atrasadas'}</span></div></article><article><CircleHelp/><div><strong>{noEvidence}</strong><span>{isEn ? 'No recent evidence' : 'Sin evidencia reciente'}</span></div></article></section>
+    <ApplicationScopeDirectory scopes={scopes} lang={lang} loading={scopeLoading || (loading && !scopes.length)} onRefresh={loadScope}/>
     <section className="it-card"><header className="it-section-heading"><div><span>{isEn ? 'APPLICATION ROADMAP' : 'ROADMAP DE APLICACIONES'}</span><h2>{isEn ? 'All registered applications' : 'Todas las aplicaciones registradas'}</h2><p>{isEn ? 'Operational Hub and Universal catalog records are shown once each.' : 'Los registros de Operational Hub y Universal aparecen una sola vez.'}</p></div>{canManage && <span className="it-permission-badge"><LockKeyhole size={14}/>{isEn ? 'IT Manage' : 'IT Gestionar'}</span>}</header>
       <div className="it-filters"><div className="it-search"><Search size={16}/><input value={filters.query} onChange={event => setFilters({ ...filters, query: event.target.value })} placeholder={isEn ? 'Search applications, owners or evidence…' : 'Buscar aplicaciones, responsables o evidencia…'}/></div><label>{isEn ? 'Application' : 'Aplicación'}<select value={filters.applicationId} onChange={event => setFilters({ ...filters, applicationId: event.target.value })}><option value="">{isEn ? 'All' : 'Todas'}</option>{applications.map(app => <option key={app.id} value={app.id}>{app.name}</option>)}</select></label><label>{isEn ? 'Owner' : 'Responsable'}<select value={filters.owner} onChange={event => setFilters({ ...filters, owner: event.target.value })}><option value="">{isEn ? 'All' : 'Todos'}</option>{owners.map(owner => <option key={owner}>{owner}</option>)}</select></label><label>{isEn ? 'Phase' : 'Fase'}<select value={filters.phase} onChange={event => setFilters({ ...filters, phase: event.target.value })}><option value="">{isEn ? 'All' : 'Todas'}</option>{phases.map(phase => <option key={phase}>{phase}</option>)}</select></label><label>{isEn ? 'Priority' : 'Prioridad'}<select value={filters.priority} onChange={event => setFilters({ ...filters, priority: event.target.value })}><option value="">{isEn ? 'All' : 'Todas'}</option>{priorities.map(priority => <option key={priority}>{priority}</option>)}</select></label><label>{isEn ? 'Integration state' : 'Estado de integración'}<select value={filters.integrationState} onChange={event => setFilters({ ...filters, integrationState: event.target.value })}><option value="">{isEn ? 'All' : 'All'}</option>{integrationStates.map(state => <option key={state}>{state}</option>)}</select></label></div>
       {loading ? <div className="it-empty"><RefreshCw/><p>{isEn ? 'Loading IT catalog and roadmap…' : 'Cargando catálogo y roadmap de IT…'}</p></div> : <div className="it-roadmap-table-wrap"><table className="it-roadmap-table"><thead><tr><th>{isEn ? 'Application' : 'Aplicación'}</th><th>{isEn ? 'Phase / owner' : 'Fase / responsable'}</th><th>{isEn ? 'Priority / progress' : 'Prioridad / progreso'}</th><th>{isEn ? 'Connection / monitoring' : 'Conexión / monitoreo'}</th><th>{isEn ? 'Evidence' : 'Evidencia'}</th><th>{isEn ? 'Attention' : 'Atención'}</th><th></th></tr></thead><tbody>{visibleRoadmap.map(row => <tr key={row.id}><td><strong>{row.applicationName}</strong><small>{row.applicationSource}</small><span className="it-links">{row.accessUrl ? <a href={row.accessUrl} target="_blank" rel="noreferrer"><ExternalLink size={12}/> {isEn ? 'Access' : 'Acceso'}</a> : <em>{isEn ? 'No access link configured' : 'Sin enlace configurado'}</em>}{row.repository && <span>{row.repository}</span>}</span></td><td>{row.phase}<small>{row.owner || (isEn ? 'Owner not assigned' : 'Responsable no asignado')}</small></td><td><span className={`it-pill ${row.priority.toLowerCase()}`}>{row.priority}</span><div className="it-progress"><i style={{ width: `${row.progress}%` }}/></div><small>{row.progress}% · {label(row.status, isEn)}</small></td><td><span className="it-state">{label(row.integrationState, isEn)}</span><small>{label(row.monitoringState, isEn)}</small></td><td>{row.lastVerifiedAt ? <><strong>{displayDate(row.lastVerifiedAt)}</strong><small>{row.evidence.source || row.evidence.reference || (isEn ? 'Evidence recorded' : 'Evidencia registrada')}</small></> : <><strong className="it-muted">{isEn ? 'No verification evidence' : 'Sin evidencia de verificación'}</strong><small>{row.evidence.note}</small></>}</td><td>{row.attention.blocked && <span className="it-attention blocked">{isEn ? 'Blocked' : 'Bloqueada'}</span>}{row.attention.overdue && <span className="it-attention overdue">{isEn ? 'Overdue' : 'Atrasada'}</span>}{row.attention.noRecentEvidence && <span className="it-attention evidence">{isEn ? 'No recent evidence' : 'Sin evidencia reciente'}</span>}</td><td><button className="it-row-action" onClick={() => { setSelectedRoadmap(row); setRoadmapForm(roadmapDraft(row)); }} title={canManage ? (isEn ? 'Open roadmap item' : 'Abrir elemento') : (isEn ? 'View details' : 'Ver detalles')}>{canManage ? <Pencil size={15}/> : <ArrowUpRight size={15}/>}</button></td></tr>)}{!visibleRoadmap.length && <tr><td colSpan="7" className="it-table-empty">{isEn ? 'No roadmap records match these filters.' : 'No hay registros que coincidan con estos filtros.'}</td></tr>}</tbody></table></div>}

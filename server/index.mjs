@@ -7,7 +7,7 @@ import { createAcademyCertificate, getAcademyLearnerPhoto, getAcademyLearnerReco
 import { syncAcademyBackend } from './academy-sync.mjs';
 import { getAcademyWelcomeVideoStatus, saveAcademyWelcomeVideo, streamAcademyWelcomeVideo } from './academy-welcome-video.mjs';
 import { createInventoryRequest, decideInventoryRequest, listInventoryRequests } from './inventory-store.mjs';
-import { createItProposal, createItRoadmap, getItProposal, listItApplications, listItProposals, listItRoadmap, updateItProposal, updateItRoadmap } from './it-store.mjs';
+import { createItProposal, createItRoadmap, getItProposal, listItApplicationScopes, listItApplications, listItProposals, listItRoadmap, syncItApplicationScope, updateItProposal, updateItRoadmap } from './it-store.mjs';
 import { createDoctorDocument, getDoctorDocument, listDoctorDocuments } from './license-store.mjs';
 import { claimNextAcaRpaCheck, completeAcaRpaCheck, createAcaRpaCheck, getAcaIntegrationStatus, importAcaRecords, listAcaRecords, listAcaRpaChecks } from './aca-store.mjs';
 import { getOperationalAttachment, getOperationalSnapshot, updateOperationalContractStatus } from './operational-airtable-store.mjs';
@@ -252,6 +252,56 @@ async function readBuffer(request,maxBytes=131072){
 
 async function readJson(request,maxBytes=131072){return JSON.parse((await readBuffer(request,maxBytes)).toString('utf8')||'{}')}
 
+function scopeSyncAuthorized(request) {
+  const configured = String(process.env.IT_SCOPE_SYNC_KEY || '').trim();
+  if (!configured) return false;
+  const header = String(request.headers['x-it-scope-sync-key'] || '').trim();
+  const bearer = String(request.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+  return header === configured || bearer === configured;
+}
+
+async function relayScopeToUniversal(payload) {
+  const baseUrl = String(process.env.UNIVERSAL_BASE_URL || '').trim();
+  const token = String(process.env.UNIVERSAL_SYNC_TOKEN || '').trim();
+  if (!baseUrl || !token) return { configured: false, delivered: false };
+  try {
+    const endpoint = new URL('/api/integrations/application-push', baseUrl).toString();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-it-scope-sync-key': token },
+      body: JSON.stringify({ ...payload, source: 'operational-hub-relay' }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    return { configured: true, delivered: response.ok, status: response.status };
+  } catch {
+    return { configured: true, delivered: false };
+  }
+}
+
+async function refreshApplicationScopeManifests() {
+  const applications = listItApplications().filter(application => application.accessUrl);
+  const results = await Promise.all(applications.map(async application => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2500);
+    try {
+      const endpoint = new URL('/.well-known/operational-scope.json', application.accessUrl).toString();
+      const response = await fetch(endpoint, { headers: { accept: 'application/json' }, signal: controller.signal });
+      if (!response.ok) return { applicationId: application.id, refreshed: false };
+      const manifest = await response.json();
+      syncItApplicationScope({ ...manifest, applicationId: manifest.applicationId || application.id, source: 'application-manifest' }, 'integration:application-manifest');
+      return { applicationId: application.id, refreshed: true };
+    } catch {
+      return { applicationId: application.id, refreshed: false };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }));
+  return results;
+}
+
 async function serveStatic(request, response) {
   const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
   const requested = pathname === '/' ? 'index.html' : pathname.replace(/^\/+/, '');
@@ -334,9 +384,21 @@ const server = createServer(async (request, response) => {
       const actor=requestIdentity(request);if(!actor)return json(response,401,{error:'Authentication required'});
       return json(response, 200, await runOperationalAi(await readJson(request, 256 * 1024),actor));
     }
+    if (request.method === 'POST' && url.pathname === '/api/integrations/application-push') {
+      if (!scopeSyncAuthorized(request)) return json(response, 401, { error: 'Application scope sync authorization required' });
+      const payload = await readJson(request, 512 * 1024);
+      const scope = syncItApplicationScope(payload, 'integration:application-push');
+      const universalRelay = payload.source === 'operational-hub-relay' ? { configured: true, delivered: true } : await relayScopeToUniversal(payload);
+      return json(response, 200, { scope, universalRelay });
+    }
     if (request.method === 'GET' && url.pathname === '/api/it/catalog') {
       const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
       return json(response, 200, { applications: listItApplications() });
+    }
+    if (request.method === 'GET' && url.pathname === '/api/it/scope') {
+      const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
+      const refreshed = await refreshApplicationScopeManifests();
+      return json(response, 200, { scopes: listItApplicationScopes(), public: true, refreshedAt: new Date().toISOString(), manifestRefresh: refreshed });
     }
     if (request.method === 'GET' && url.pathname === '/api/it/roadmap') {
       const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
