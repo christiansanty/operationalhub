@@ -1,0 +1,38 @@
+.research-workspace-view{display:grid;gap:18px}
+.research-workspace-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:22px;padding:26px 28px;border:1px solid #d7e4df;border-radius:18px;background:linear-gradient(135deg,#f4fbf8,#fff)}
+.research-workspace-heading>div{max-width:900px}
+.research-workspace-heading>div>span,.research-workspace-flow header>span{color:#176b57;font-size:12px;font-weight:900;letter-spacing:.13em}
+.research-workspace-heading h2{margin:6px 0 5px;color:#163a34;font:800 27px Manrope}
+.research-workspace-heading p{margin:0;color:#62756f;font-size:16px;line-height:1.6}
+.research-workspace-back{display:inline-flex;align-items:center;gap:7px;border:1px solid #bad6cb;border-radius:9px;background:#fff;padding:10px 13px;color:#176b57;font-weight:800;white-space:nowrap;cursor:pointer}
+.research-workspace-back:hover{background:#f0faf5}
+.research-workspace-status{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.research-workspace-status>div{display:flex;align-items:flex-start;gap:10px;padding:16px;border:1px solid #dce8e3;border-radius:14px;background:#fff}
+.research-workspace-status svg{flex:none;color:#2b8062}
+.research-workspace-status strong,.research-workspace-status small{display:block}
+.research-workspace-status strong{color:#243c36;font-size:14px}
+.research-workspace-status small{margin-top:4px;color:#71817b;font-size:12px;line-height:1.4}
+.research-workspace-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.research-workspace-card{display:grid;grid-template-columns:45px minmax(0,1fr) 17px;align-items:center;gap:13px;min-height:142px;padding:19px;border:1px solid #dce3eb;border-radius:15px;background:#fff;text-align:left;color:#26354a;cursor:pointer;transition:.18s}
+.research-workspace-card:hover{transform:translateY(-2px);border-color:#8bb9a6;box-shadow:0 12px 28px rgba(23,107,87,.09)}
+.research-workspace-card-icon{width:45px;height:45px;display:grid;place-items:center;border-radius:12px;background:#e6f4ed;color:#176b57}
+.research-workspace-card-copy small,.research-workspace-card-copy strong,.research-workspace-card-copy em{display:block}
+.research-workspace-card-copy small{color:#2b8062;font-size:11px;font-weight:900;letter-spacing:.07em;text-transform:uppercase}
+.research-workspace-card-copy strong{margin-top:5px;color:#233a34;font-size:17px}
+.research-workspace-card-copy em{margin-top:5px;color:#71817b;font-size:13px;font-style:normal;line-height:1.4}
+.research-workspace-card>svg{color:#7d9189}
+.research-workspace-flow{border:1px solid #dce3eb;border-radius:16px;background:#fff;overflow:hidden}
+.research-workspace-flow header{padding:21px 23px 15px}
+.research-workspace-flow h3{margin:5px 0 0;color:#243c36;font:800 21px Manrope}
+.research-workspace-flow>div{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid #e8efeb}
+.research-workspace-flow article{min-height:145px;padding:18px 17px;border-right:1px solid #e8efeb}
+.research-workspace-flow article:last-child{border-right:0}
+.research-workspace-flow b{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:#e6f4ed;color:#176b57;font-size:12px}
+.research-workspace-flow strong{display:block;margin-top:14px;color:#263d36;font-size:15px}
+.research-workspace-flow p{margin:5px 0 0;color:#71817b;font-size:13px;line-height:1.45}
+.research-workspace-boundary{display:flex;align-items:flex-start;gap:10px;padding:16px 18px;border:1px solid #cfe0d8;border-radius:14px;background:#f1faf5;color:#4b635a}
+.research-workspace-boundary>svg{flex:none;color:#176b57}
+.research-workspace-boundary p{margin:0;font-size:14px;line-height:1.5}
+.research-workspace-boundary strong{display:block;margin-bottom:3px;color:#24483b}
+@media(max-width:900px){.research-workspace-heading{align-items:flex-start;flex-direction:column}.research-workspace-status{grid-template-columns:1fr}.research-workspace-flow>div{grid-template-columns:repeat(2,1fr)}.research-workspace-flow article:nth-child(2){border-right:0}.research-workspace-flow article:nth-child(-n+2){border-bottom:1px solid #e8efeb}}
+@media(max-width:650px){.research-workspace-grid{grid-template-columns:1fr}.research-workspace-flow>div{grid-template-columns:1fr}.research-workspace-flow article,.research-workspace-flow article:nth-child(2){border-right:0;border-bottom:1px solid #e8efeb}.research-workspace-flow article:last-child{border-bottom:0}.research-workspace-heading{padding:21px}.research-workspace-heading h2{font-size:23px}}

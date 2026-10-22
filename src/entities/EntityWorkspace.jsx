@@ -5,6 +5,7 @@ import {
   Sparkles, Stethoscope, Target, UserRound, UsersRound,
 } from 'lucide-react';
 import './entity-workspace.css';
+import './research-workspace.css';
 
 const bilingual=(en,es)=>({en,es});
 
@@ -145,14 +146,14 @@ export const entityDefinitions={
   },
 };
 
-export const entitySections=['overview','structure','services','team','leads','resources'];
+export const entitySections=['overview','workspace','structure','services','team','leads','resources'];
 
 export function parseEntityPage(page){
   for(const key of Object.keys(entityDefinitions)){
     const prefix=`${key}-`;
     if(page.startsWith(prefix)){
       const section=page.slice(prefix.length);
-      if(entitySections.includes(section))return {key,section,definition:entityDefinitions[key]};
+      if(entitySections.includes(section)&&(!['workspace'].includes(section)||key==='research'))return {key,section,definition:entityDefinitions[key]};
     }
   }
   return null;
@@ -163,6 +164,7 @@ export function entityPage(key,section='overview'){return `${key}-${section}`}
 export function entityNavItems(definition,lang){
   return [
     {id:entityPage(definition.key,'overview'),label:lang==='en'?'Overview':'Resumen',icon:Building2},
+    ...(definition.key==='research'?[{id:entityPage(definition.key,'workspace'),label:lang==='en'?'Research Workspace':'Workspace de Research',icon:BriefcaseBusiness}]:[]),
     {id:entityPage(definition.key,'structure'),label:definition.structure[lang],icon:definition.key==='medical'?MapPin:BriefcaseBusiness},
     {id:entityPage(definition.key,'services'),label:lang==='en'?'Services':'Servicios',icon:HeartPulse},
     {id:entityPage(definition.key,'team'),label:lang==='en'?'People & roles':'Equipo y funciones',icon:UsersRound},
@@ -206,12 +208,30 @@ function Resources({definition,lang,onNavigate,canAccessPage=()=>true}){
   return <section className="entity-resources"><header><span>{lang==='en'?'ENTITY RESOURCES':'RECURSOS DE LA ENTIDAD'}</span><h2>{lang==='en'?'Connected records without duplicate screens':'Registros conectados sin pantallas duplicadas'}</h2><p>{lang==='en'?'These links open the shared source of truth only when the record belongs to a Hub-wide control.':'Estos enlaces abren la fuente compartida únicamente cuando el registro pertenece a un control general del Hub.'}</p></header>{resources.length?<div>{resources.map(({page,icon:Icon,title,text})=><button key={page} onClick={()=>onNavigate(page)}><Icon/><span><strong>{title[lang]}</strong><small>{text[lang]}</small></span><ArrowRight/></button>)}</div>:<div className="entity-resources-empty"><ShieldCheck size={20}/><p>{lang==='en'?'No shared resources are assigned to this account.':'No hay recursos compartidos asignados a esta cuenta.'}</p></div>}</section>;
 }
 
+function ResearchWorkspace({lang,onNavigate,canAccessPage=()=>true}){
+  const isEn=lang==='en';
+  const areas=[
+    {page:'research-agreements',icon:ClipboardCheck,title:isEn?'Study Agreements':'Acuerdos de Estudios',text:isEn?'Manually register study, sponsor, vendor and site agreements.':'Registra manualmente acuerdos de estudios, patrocinadores, vendors y sedes.',status:isEn?'Manual register':'Registro manual'},
+    {page:'protocols',icon:FileText,title:isEn?'Protocols & Controls':'Protocolos y Controles',text:isEn?'Keep approved roles, outreach boundaries and operating procedures visible.':'Mantén visibles los roles aprobados, límites de contacto y procedimientos.',status:isEn?'Shared control':'Control compartido'},
+    {page:'research-leads',icon:Target,title:isEn?'Recruitment & Leads':'Reclutamiento y Leads',text:isEn?'Route permissioned opportunities into Research pre-screening and follow-up.':'Canaliza oportunidades autorizadas hacia pre-screening y seguimiento de Research.',status:isEn?'Research pipeline':'Pipeline de Research'},
+    {page:'academy',icon:GraduationCap,title:isEn?'Research Training':'Capacitación de Research',text:isEn?'Give coordinators and support teams the approved Research workflow curriculum.':'Ofrece al equipo el currículo aprobado del flujo de Research.',status:isEn?'Learning path':'Ruta de aprendizaje'},
+  ];
+  return <section className="research-workspace-view">
+    <header className="research-workspace-heading"><div><span>{isEn?'RESEARCH OPERATIONS WORKSPACE':'WORKSPACE DE OPERACIONES DE RESEARCH'}</span><h2>{isEn?'One workspace for every Research handoff':'Un workspace para cada transición de Research'}</h2><p>{isEn?'A focused operating room for studies, recruitment, agreements, protocols and training. Participation remains voluntary and every clinical decision stays with the authorized Research team.':'Un espacio de trabajo enfocado en estudios, reclutamiento, acuerdos, protocolos y capacitación. La participación es voluntaria y toda decisión clínica permanece con el equipo autorizado de Research.'}</p></div><button className="research-workspace-back" onClick={()=>onNavigate('research-overview')}><ArrowLeft size={16}/>{isEn?'Entity overview':'Resumen de la entidad'}</button></header>
+    <div className="research-workspace-status"><div><CheckCircle2 size={20}/><span><strong>{isEn?'Workspace ready':'Workspace listo'}</strong><small>{isEn?'Connected to the Eastern Medical Research entity':'Conectado a la entidad Eastern Medical Research'}</small></span></div><div><ShieldCheck size={20}/><span><strong>{isEn?'Permissioned workflow':'Flujo autorizado'}</strong><small>{isEn?'Use approved criteria, scripts and records only':'Usa únicamente criterios, guiones y registros aprobados'}</small></span></div><div><UsersRound size={20}/><span><strong>{isEn?'Shared ownership':'Responsabilidad compartida'}</strong><small>{isEn?'Study, coordination, regulatory and data teams':'Equipos de estudios, coordinación, regulatorio y datos'}</small></span></div></div>
+    <div className="research-workspace-grid">{areas.filter(area=>canAccessPage(area.page)).map(({page,icon:Icon,title,text,status})=><button key={page} className="research-workspace-card" onClick={()=>onNavigate(page)}><span className="research-workspace-card-icon"><Icon size={22}/></span><span className="research-workspace-card-copy"><small>{status}</small><strong>{title}</strong><em>{text}</em></span><ArrowRight size={17}/></button>)}</div>
+    <section className="research-workspace-flow"><header><span>{isEn?'OPERATING SEQUENCE':'SECUENCIA OPERACIONAL'}</span><h3>{isEn?'How work moves through Research':'Cómo se mueve el trabajo en Research'}</h3></header><div><article><b>01</b><strong>{isEn?'Identify':'Identificar'}</strong><p>{isEn?'Permissioned outreach using active protocol criteria.':'Contacto autorizado usando criterios del protocolo activo.'}</p></article><article><b>02</b><strong>{isEn?'Pre-screen':'Pre-screen'}</strong><p>{isEn?'Approved questions and documented outcome.':'Preguntas aprobadas y resultado documentado.'}</p></article><article><b>03</b><strong>{isEn?'Coordinate':'Coordinar'}</strong><p>{isEn?'Consent, screening, visits and safety follow-up.':'Consentimiento, screening, visitas y seguimiento de seguridad.'}</p></article><article><b>04</b><strong>{isEn?'Close the record':'Cerrar el expediente'}</strong><p>{isEn?'Sponsor-ready documents and clear ownership.':'Documentos listos para patrocinador y responsabilidad clara.'}</p></article></div></section>
+    <div className="research-workspace-boundary"><ShieldCheck size={19}/><p><strong>{isEn?'Research boundary':'Límite de Research'}</strong>{isEn?'This workspace does not include insurance contracting. Study agreements are research records for new studies and are maintained separately from insurance contracts.':'Este workspace no incluye contratación de seguros. Los acuerdos de estudios son registros de Research para nuevos estudios y se mantienen separados de los contratos de seguros.'}</p></div>
+  </section>;
+}
+
 export default function EntityWorkspace({definition,section,lang,onNavigate,staffRows=[],renderLeads,canAccessPage=()=>true}){
   const Icon=definition.icon;
   return <div className={`entity-workspace ${definition.tone}`}>
     <header className="entity-workspace-hero"><button onClick={()=>onNavigate('hub')}><ArrowLeft/>{lang==='en'?'Operational Hub':'Operational Hub'}</button><div><span>{definition.eyebrow[lang]}</span><h1>{definition.name}</h1><p>{definition.summary[lang]}</p></div>{definition.logo?<img className="entity-workspace-logo" src={definition.logo} alt={`${definition.name} logo`}/>:<Icon/>}</header>
     <div className="entity-workspace-content">
       {section==='overview'&&<Overview definition={definition} lang={lang} onNavigate={onNavigate} staffRows={staffRows}/>}
+      {section==='workspace'&&definition.key==='research'&&<ResearchWorkspace lang={lang} onNavigate={onNavigate} canAccessPage={canAccessPage}/>}
       {section==='structure'&&<DetailDirectory definition={definition} lang={lang} type="structure"/>}
       {section==='services'&&<DetailDirectory definition={definition} lang={lang} type="services"/>}
       {section==='team'&&<TeamView definition={definition} lang={lang} staffRows={staffRows} onNavigate={onNavigate}/>}
