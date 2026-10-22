@@ -541,13 +541,13 @@ const server = createServer(async (request, response) => {
     if (/^\/api\/research\/fundamental-studies\/[^/]+\/requirements\/[^/]+$/.test(url.pathname)) {
       const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
       if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
-      const requirementId = decodeURIComponent(url.pathname.split('/')[5]);
+      const requirementId = decodeURIComponent(url.pathname.split('/')[6]);
       return json(response, 200, { requirement: updateFundamentalStudyRequirement(requirementId, await readJson(request, 32 * 1024), actor) });
     }
     if (/^\/api\/research\/fundamental-studies\/[^/]+\/documents\/[^/]+$/.test(url.pathname)) {
       const actor = researchDataActor(request, 'research-fundamental-studies:manage', 'manage');
       if (!actor) return json(response, requestIdentity(request) ? 403 : 401, { error: requestIdentity(request) ? 'Fundamental Studies Manage access required' : 'Authentication required' });
-      const documentId = decodeURIComponent(url.pathname.split('/')[5]);
+      const documentId = decodeURIComponent(url.pathname.split('/')[6]);
       const deleted = deleteFundamentalStudyDocument(documentId, actor);
       return json(response, deleted ? 200 : 404, deleted ? { deleted: true } : { error: 'Fundamental Study document not found' });
     }
