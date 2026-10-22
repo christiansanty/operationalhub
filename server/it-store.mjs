@@ -251,7 +251,7 @@ function publicRoadmap(row) {
   const overdue = Boolean(row.due_at && new Date(row.due_at).getTime() < Date.now() && row.status !== 'COMPLETED');
   const noEvidence = !row.last_verified_at;
   return {
-    id: row.id, applicationId: row.application_id, applicationName: row.application_name, applicationSource: row.application_source, createdAt: row.created_at,
+    id: row.id, applicationId: row.application_id, applicationName: row.application_name, applicationSource: row.application_source, createdAt: row.created_at, createdBy: row.created_by || 'system:catalog',
     accessUrl: row.access_url || '', repository: row.repository || '', phase: row.phase, priority: row.priority, progress: row.progress,
     status: row.status, owner: row.owner || '', dueAt: row.due_at || '', milestones: parseJson(row.milestones_json), dependencies: parseJson(row.dependencies_json), blockers: parseJson(row.blockers_json), nextActions: parseJson(row.next_actions_json),
     integrationState: row.integration_state, monitoringState: row.monitoring_state, lastVerifiedAt: row.last_verified_at || '', evidence: { reference: row.evidence_reference || '', source: row.evidence_source || '', note: row.evidence_note || '' }, plannedEnvironments: parseJson(row.planned_environments_json), verifiedEnvironments: parseJson(row.verified_environments_json),
@@ -397,8 +397,8 @@ export function updateItRoadmap(id, payload, actorId) {
 }
 
 function publicProposal(row, includeContact = false) {
-  const result = { id: row.id, applicationId: row.application_id, applicationName: row.application_name, title: row.title, description: row.description, expectedOutcome: row.expected_outcome, impact: row.impact, suggestedPriority: row.suggested_priority, category: row.category, status: row.status, assignedTo: row.assigned_to || '', itComment: row.it_comment || '', declineReason: row.decline_reason || '', createdAt: row.created_at, updatedAt: row.updated_at };
-  if (includeContact) result.submitter = { id: row.submitter_id, name: row.submitter_name, email: row.submitter_email };
+  const result = { id: row.id, applicationId: row.application_id, applicationName: row.application_name, title: row.title, description: row.description, expectedOutcome: row.expected_outcome, impact: row.impact, suggestedPriority: row.suggested_priority, category: row.category, status: row.status, assignedTo: row.assigned_to || '', itComment: row.it_comment || '', declineReason: row.decline_reason || '', createdAt: row.created_at, updatedAt: row.updated_at, submitter: { id: row.submitter_id, name: row.submitter_name } };
+  if (includeContact) result.submitter.email = row.submitter_email;
   return result;
 }
 
@@ -424,13 +424,20 @@ export function createItProposal(payload, actor) {
   const applicationId = safeText(payload.applicationId, 120);
   const title = safeText(payload.title, 200);
   const description = safeText(payload.description, 3000);
-  const expectedOutcome = safeText(payload.expectedOutcome, 2000);
-  const impact = safeText(payload.impact, 1600);
   const suggestedPriority = enumValue(payload.suggestedPriority, priorities, 'MEDIUM');
   const category = enumValue(payload.category, proposalCategories, 'OTHER');
   const database = openDatabase();
   try {
-    if (!database.prepare('SELECT id FROM it_applications WHERE id = ?').get(applicationId)) { const error = new Error('Application is not registered in the IT catalog.'); error.statusCode = 404; throw error; }
+    const application = database.prepare('SELECT id, name FROM it_applications WHERE id = ?').get(applicationId);
+    if (!application) { const error = new Error('Application is not registered in the IT catalog.'); error.statusCode = 404; throw error; }
+    const context = `${title} ${description}`.toLowerCase();
+    const focus = context.includes('error') || context.includes('bug') || context.includes('fall') ? 'reliability and issue resolution'
+      : context.includes('report') || context.includes('metric') || context.includes('dashboard') ? 'visibility and reporting'
+        : context.includes('integrat') || context.includes('connect') || context.includes('sync') ? 'integration and handoffs'
+          : context.includes('automat') || context.includes('agent') || context.includes('ai') ? 'automation and assisted work'
+            : 'the employee workflow and operational experience';
+    const expectedOutcome = `System-generated from the submitted idea: clarify and evaluate the proposed change for ${application.name}, with focus on ${focus}.`;
+    const impact = `System-generated assessment: if implemented, this idea could improve ${focus} by reducing friction, making ownership clearer and giving IT a measurable change to validate.`;
     const id = randomUUID(); const timestamp = now();
     database.prepare('INSERT INTO it_proposals (id,application_id,submitter_id,submitter_name,submitter_email,title,description,expected_outcome,impact,suggested_priority,category,status,assigned_to,it_comment,decline_reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
       .run(id, applicationId, actor.id, safeText(actor.name, 160), safeText(actor.email, 320), title, description, expectedOutcome, impact, suggestedPriority, category, 'SUBMITTED', null, null, null, timestamp, timestamp);
