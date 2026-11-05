@@ -22,6 +22,7 @@ function openDatabase() {
       scope_key TEXT NOT NULL,
       title TEXT NOT NULL,
       details TEXT NOT NULL DEFAULT '',
+      idea_date TEXT NOT NULL DEFAULT '',
       status TEXT NOT NULL DEFAULT 'planned',
       priority TEXT NOT NULL DEFAULT 'medium',
       deadline TEXT NOT NULL DEFAULT '',
@@ -36,6 +37,8 @@ function openDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_research_workspace_items_scope ON research_workspace_items(scope_key, deadline, updated_at);
   `);
+  const columns = database.prepare('PRAGMA table_info(research_workspace_items)').all();
+  if (!columns.some(column => column.name === 'idea_date')) database.exec("ALTER TABLE research_workspace_items ADD COLUMN idea_date TEXT NOT NULL DEFAULT ''");
   return database;
 }
 
@@ -74,6 +77,7 @@ function publicItem(row) {
     scopeKey: row.scope_key,
     title: row.title,
     details: row.details,
+    ideaDate: row.idea_date || row.created_at?.slice(0, 10) || '',
     status: row.status,
     priority: row.priority,
     deadline: row.deadline,
@@ -105,6 +109,7 @@ function itemValues(payload = {}, actor, existing = null) {
   const scopeKey = normalizeScope(payload.scopeKey || existing?.scope_key);
   const title = clean(payload.title, 220) || existing?.title || '';
   const details = payload.details === undefined ? (existing?.details || '') : clean(payload.details, 5000);
+  const ideaDate = payload.ideaDate === undefined ? (existing?.idea_date || existing?.created_at?.slice(0, 10) || '') : normalizeDate(payload.ideaDate);
   const status = payload.status === undefined ? (existing?.status || 'planned') : clean(payload.status, 30);
   const priority = payload.priority === undefined ? (existing?.priority || 'medium') : clean(payload.priority, 30);
   const deadline = payload.deadline === undefined ? (existing?.deadline || '') : normalizeDate(payload.deadline);
@@ -118,7 +123,7 @@ function itemValues(payload = {}, actor, existing = null) {
   if (!priorities.has(priority)) throw httpError('A supported workspace item priority is required.');
   const createdBy = existing?.created_by || clean(actor?.id, 180) || 'workspace-system';
   const createdByName = existing?.created_by_name || clean(actor?.name, 180) || clean(actor?.email, 320) || 'Workspace user';
-  return { scopeKey, title, details, status, priority, deadline, followUpDate, owner, notes, attachments, createdBy, createdByName };
+  return { scopeKey, title, details, ideaDate, status, priority, deadline, followUpDate, owner, notes, attachments, createdBy, createdByName };
 }
 
 export function createResearchWorkspaceItem(payload = {}, actor) {
@@ -127,8 +132,8 @@ export function createResearchWorkspaceItem(payload = {}, actor) {
   const timestamp = now();
   const database = openDatabase();
   try {
-    database.prepare('INSERT INTO research_workspace_items (id,scope_key,title,details,status,priority,deadline,follow_up_date,owner,notes,attachments_json,created_by,created_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, values.scopeKey, values.title, values.details, values.status, values.priority, values.deadline, values.followUpDate, values.owner, values.notes, JSON.stringify(values.attachments), values.createdBy, values.createdByName, timestamp, timestamp);
+    database.prepare('INSERT INTO research_workspace_items (id,scope_key,title,details,idea_date,status,priority,deadline,follow_up_date,owner,notes,attachments_json,created_by,created_by_name,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, values.scopeKey, values.title, values.details, values.ideaDate, values.status, values.priority, values.deadline, values.followUpDate, values.owner, values.notes, JSON.stringify(values.attachments), values.createdBy, values.createdByName, timestamp, timestamp);
     return publicItem(database.prepare('SELECT * FROM research_workspace_items WHERE id = ?').get(id));
   } finally { database.close(); }
 }
@@ -140,8 +145,8 @@ export function updateResearchWorkspaceItem(id, payload = {}) {
   const updatedAt = now();
   const database = openDatabase();
   try {
-    database.prepare('UPDATE research_workspace_items SET title=?,details=?,status=?,priority=?,deadline=?,follow_up_date=?,owner=?,notes=?,attachments_json=?,updated_at=? WHERE id=?')
-      .run(values.title, values.details, values.status, values.priority, values.deadline, values.followUpDate, values.owner, values.notes, JSON.stringify(values.attachments), updatedAt, existing.id);
+    database.prepare('UPDATE research_workspace_items SET title=?,details=?,idea_date=?,status=?,priority=?,deadline=?,follow_up_date=?,owner=?,notes=?,attachments_json=?,updated_at=? WHERE id=?')
+      .run(values.title, values.details, values.ideaDate, values.status, values.priority, values.deadline, values.followUpDate, values.owner, values.notes, JSON.stringify(values.attachments), updatedAt, existing.id);
     return publicItem(database.prepare('SELECT * FROM research_workspace_items WHERE id = ?').get(existing.id));
   } finally { database.close(); }
 }

@@ -1,0 +1,5 @@
+run = "pnpm build && pnpm start"
+
+[deployment]
+run = ["sh", "-c", "pnpm build && pnpm start"]
+deploymentTarget = "cloudrun"

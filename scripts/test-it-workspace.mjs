@@ -107,6 +107,11 @@ try {
   assert.equal(inbox.payload.fullAccess, true);
   assert.equal(inbox.payload.proposals.length, 2);
   assert.equal(inbox.payload.proposals.find(row => row.id === ownId).submitter.email, viewer.email);
+  await request('POST', '/api/it/proposals', managerCookie, { ...proposalBody, title: 'Low priority idea', suggestedPriority: 'LOW' }, { 'x-idempotency-key': 'idea-manager-low-001' });
+  await request('POST', '/api/it/proposals', managerCookie, { ...proposalBody, title: 'Critical priority idea', suggestedPriority: 'CRITICAL' }, { 'x-idempotency-key': 'idea-manager-critical-001' });
+  const prioritized = await request('GET', '/api/it/proposals', managerCookie);
+  assert.deepEqual(prioritized.payload.proposals.map(row => row.suggestedPriority), ['CRITICAL', 'HIGH', 'HIGH', 'LOW']);
+  assert.equal(prioritized.payload.proposals.find(row => row.title === 'Low priority idea').applicationId, appId);
   assert.equal((await request('PATCH', `/api/it/proposals/${ownId}`, managerCookie, { status: 'DECLINED' })).status, 400);
   assert.equal((await request('PATCH', `/api/it/proposals/${ownId}`, managerCookie, { status: 'DECLINED', declineReason: 'Not aligned with current scope.' })).status, 200);
   assert.equal((await request('POST', '/api/it/proposals', viewerCookie, { ...proposalBody, title: 'password token patient PHI' })).status, 400);

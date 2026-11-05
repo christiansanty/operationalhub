@@ -26,6 +26,9 @@ function priorityLabel(value, isEn) {
   return labels[value] || value;
 }
 
+const priorityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+const ideaPriority = idea => idea.priority || idea.suggestedPriority || 'MEDIUM';
+
 export default function ApplicationScopeDirectory({
   scopes = [], roadmap = [], proposals = [], lang = 'en', loading = false, onRefresh, onOpenRoadmap, onOpenProposal,
 }) {
@@ -45,13 +48,18 @@ export default function ApplicationScopeDirectory({
     </header>
     {loading ? <div className="it-empty"><RefreshCw/><p>{isEn ? 'Loading applications…' : 'Cargando aplicaciones…'}</p></div> : <div className="it-scope-directory">{scopes.map(scope => {
       const implementation = roadmapByApplication.get(scope.applicationId);
-      const relatedIdeas = proposals.filter(proposal => proposal.applicationId === scope.applicationId);
+      const relatedIdeas = proposals.filter(proposal => proposal.applicationId === scope.applicationId).sort((left, right) => {
+        const priorityDifference = (priorityRank[ideaPriority(left)] ?? 4) - (priorityRank[ideaPriority(right)] ?? 4);
+        if (priorityDifference) return priorityDifference;
+        return new Date(right.updatedAt || right.createdAt || 0).getTime() - new Date(left.updatedAt || left.createdAt || 0).getTime();
+      });
+      const highPriorityIdeas = relatedIdeas.filter(idea => ['CRITICAL', 'HIGH'].includes(ideaPriority(idea))).length;
       const open = openApplicationId === scope.applicationId;
       return <article className={`it-scope-application ${open ? 'open' : ''}`} key={scope.applicationId}>
         <button className="it-scope-application-toggle" onClick={() => setOpenApplicationId(open ? null : scope.applicationId)} aria-expanded={open}>
           <span className="it-scope-app-icon"><Boxes size={19}/></span>
           <span className="it-scope-app-title"><strong>{scope.applicationName}</strong><small>{text(scope.purpose, lang)}</small></span>
-          <span className="it-scope-app-status"><b>{implementation ? `${implementation.progress}% · ${statusLabel(implementation.status, isEn)}` : (isEn ? 'No IT work recorded' : 'Sin trabajo de IT')}</b><small>{scope.modules.length} {isEn ? (scope.modules.length === 1 ? 'module' : 'modules') : (scope.modules.length === 1 ? 'módulo' : 'módulos')}</small></span>
+          <span className="it-scope-app-status"><b>{implementation ? `${implementation.progress}% · ${statusLabel(implementation.status, isEn)}` : (isEn ? 'No IT work recorded' : 'Sin trabajo de IT')}</b><small>{scope.modules.length} {isEn ? (scope.modules.length === 1 ? 'module' : 'modules') : (scope.modules.length === 1 ? 'módulo' : 'módulos')} · {relatedIdeas.length} {isEn ? (relatedIdeas.length === 1 ? 'idea' : 'ideas') : (relatedIdeas.length === 1 ? 'idea' : 'ideas')}</small></span>
           <ChevronDown className="it-scope-chevron" size={18}/>
         </button>
         {open && <div className="it-scope-application-detail">
@@ -74,7 +82,7 @@ export default function ApplicationScopeDirectory({
             </div>;
           })}</div>
           {!!scope.aiAgents?.length && <div className="it-scope-agents"><div className="it-scope-subheading"><Bot size={16}/><strong>{isEn ? 'AI agents' : 'Agentes de IA'}</strong></div>{scope.aiAgents.map(agent => <div className="it-scope-agent" key={agent.id || text(agent.name, lang)}><strong>{text(agent.name, lang)}</strong><p>{text(agent.function, lang)}</p></div>)}</div>}
-          <div className="it-scope-proposals"><div className="it-scope-subheading"><Wrench size={16}/><strong>{isEn ? 'Ideas for this application' : 'Ideas para esta aplicación'}</strong></div>{relatedIdeas.map(idea => <button className="it-scope-proposal" key={idea.id} onClick={() => onOpenProposal?.(idea)}><div><strong>{idea.title}</strong><small>{idea.submitter?.name || (isEn ? 'Unknown author' : 'Autor desconocido')} · {formatDate(idea.createdAt, isEn)}</small></div><span className={`it-pill ${idea.suggestedPriority.toLowerCase()}`}>{priorityLabel(idea.suggestedPriority, isEn)}</span></button>)}{!relatedIdeas.length && <p className="it-scope-empty-line">{isEn ? 'No ideas submitted for this application.' : 'No hay ideas enviadas para esta aplicación.'}</p>}</div>
+          <div className="it-scope-proposals"><div className="it-scope-subheading"><Wrench size={16}/><strong>{isEn ? 'Ideas for this application' : 'Ideas para esta aplicación'}</strong><span className="it-scope-idea-count">{relatedIdeas.length}{highPriorityIdeas ? ` · ${highPriorityIdeas} ${isEn ? 'high priority' : 'de alta prioridad'}` : ''}</span></div>{relatedIdeas.map(idea => <button className="it-scope-proposal" key={idea.id} onClick={() => onOpenProposal?.(idea)}><div><strong>{idea.title}</strong><small>{idea.submitter?.name || (isEn ? 'Unknown author' : 'Autor desconocido')} · {formatDate(idea.createdAt, isEn)}</small></div><span className={`it-pill ${ideaPriority(idea).toLowerCase()}`}>{priorityLabel(ideaPriority(idea), isEn)}</span></button>)}{!relatedIdeas.length && <p className="it-scope-empty-line">{isEn ? 'No ideas submitted for this application.' : 'No hay ideas enviadas para esta aplicación.'}</p>}</div>
         </div>}
       </article>;
     })}{!scopes.length && <div className="it-empty"><Boxes/><p>{isEn ? 'No applications are available yet.' : 'Todavía no hay aplicaciones disponibles.'}</p></div>}</div>}

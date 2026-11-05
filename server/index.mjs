@@ -51,6 +51,7 @@ import {
 } from './access-store.mjs';
 
 const port = Number(process.env.PORT || 4176);
+const host = process.env.HOST || '0.0.0.0';
 const distRoot = path.resolve('dist');
 const mime = { '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.json':'application/json', '.svg':'image/svg+xml', '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.webp':'image/webp' };
 
@@ -1111,4 +1112,4 @@ const server = createServer(async (request, response) => {
 await ingestAcademyExport().catch(() => null);
 if (process.env.ACADEMY_SYNC_ON_START === 'true') syncAcademyBackend().catch((error) => console.error('Academy startup sync failed:', error.message));
 if (process.env.OPERATIONAL_AIRTABLE_SYNC_ON_START === 'true') syncOperationalAirtable().catch((error) => console.error('Operational Airtable startup sync failed:', error.message));
-server.listen(port, '127.0.0.1', () => console.log(`Operational Hub backend listening on http://127.0.0.1:${port}`));
+server.listen(port, host, () => console.log(`Operational Hub backend listening on http://${host}:${port}`));

@@ -23,6 +23,7 @@ try {
     scopeKey: 'entity-research',
     title: 'Confirm site startup package',
     details: 'Coordinate sponsor and regulatory review.',
+    ideaDate: '2026-10-28',
     status: 'in-progress',
     priority: 'high',
     deadline: '2026-11-15',
@@ -32,13 +33,15 @@ try {
     attachments: [{ id: 'resource-1', title: 'Study sheet', kind: 'google-sheet', url: 'https://docs.google.com/spreadsheets/d/example' }],
   }, actor);
   assert.equal(item.title, 'Confirm site startup package');
+  assert.equal(item.ideaDate, '2026-10-28');
   assert.equal(item.priority, 'high');
   assert.equal(item.deadline, '2026-11-15');
   assert.equal(item.attachments[0].kind, 'google-sheet');
   assert.equal(items.listResearchWorkspaceItems().length, 1);
-  const updatedItem = items.updateResearchWorkspaceItem(item.id, { status: 'done', notes: 'Reviewed and approved.' });
+  const updatedItem = items.updateResearchWorkspaceItem(item.id, { status: 'done', notes: 'Reviewed and approved.', ideaDate: '2026-10-29' });
   assert.equal(updatedItem.status, 'done');
   assert.equal(updatedItem.notes, 'Reviewed and approved.');
+  assert.equal(updatedItem.ideaDate, '2026-10-29');
   assert.equal(items.deleteResearchWorkspaceItem(item.id), true);
   assert.equal(items.listResearchWorkspaceItems().length, 0);
   console.log('Research workspace ideas and tracker persistence tests passed.');

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  AlertTriangle, CalendarDays, CheckCircle2, Cpu, Lightbulb, LockKeyhole, Plus,
+  AlertTriangle, CalendarDays, CheckCircle2, Cpu, Lightbulb, ListFilter,
   RefreshCw, Save, ShieldCheck, UserRound, X,
 } from 'lucide-react';
 import './it-workspace.css';
@@ -8,11 +8,12 @@ import ApplicationScopeDirectory from './ApplicationScopeDirectory.jsx';
 
 const roadmapStatuses = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'];
 const proposalStatuses = ['SUBMITTED', 'IN_REVIEW', 'ACCEPTED', 'PLANNED', 'IN_PROGRESS', 'DECLINED', 'COMPLETED'];
-const priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+const priorities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 const categories = ['ERROR', 'IMPROVEMENT', 'NEW_FEATURE', 'INTEGRATION', 'OTHER'];
 const progressOptions = Array.from({ length: 11 }, (_, index) => index * 10);
 const blankProposal = { applicationId: '', title: '', description: '', suggestedPriority: 'MEDIUM', category: 'IMPROVEMENT' };
 const newSubmissionKey = () => `idea-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+const priorityOrder = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 
 const label = (value, isEn) => {
   const labels = {
@@ -26,6 +27,50 @@ const label = (value, isEn) => {
 const displayDate = (value, isEn) => value ? new Date(value).toLocaleDateString(isEn ? 'en-US' : 'es-US') : (isEn ? 'Not set' : 'Sin fecha');
 
 const roadmapDraft = row => ({ priority: row.priority, progress: row.progress, status: row.status, owner: row.owner, dueAt: row.dueAt });
+
+const proposalPriority = proposal => proposal.priority || proposal.suggestedPriority || 'MEDIUM';
+const sortProposals = proposals => [...proposals].sort((left, right) => {
+  const priorityDifference = priorityOrder.indexOf(proposalPriority(left)) - priorityOrder.indexOf(proposalPriority(right));
+  if (priorityDifference) return priorityDifference;
+  return new Date(right.updatedAt || right.createdAt || 0).getTime() - new Date(left.updatedAt || left.createdAt || 0).getTime();
+});
+
+function IdeaPriorityDashboard({ proposals, fullAccess, isEn, loading, onOpenProposal }) {
+  const sortedProposals = sortProposals(proposals);
+  const applicationCount = new Set(sortedProposals.map(proposal => proposal.applicationId)).size;
+  const highPriorityCount = sortedProposals.filter(proposal => ['CRITICAL', 'HIGH'].includes(proposalPriority(proposal))).length;
+
+  return <section className="it-card it-idea-dashboard">
+    <header className="it-section-heading">
+      <div>
+        <span>{isEn ? 'IDEA PRIORITY DASHBOARD' : 'DASHBOARD DE PRIORIDAD DE IDEAS'}</span>
+        <h2>{isEn ? 'All ideas, ready for IT review' : 'Todas las ideas, listas para revisión de IT'}</h2>
+        <p>{fullAccess
+          ? (isEn ? 'Every submitted idea is stored here and ordered by operational priority.' : 'Cada idea enviada se guarda aquí y se ordena por prioridad operacional.')
+          : (isEn ? 'Your submitted ideas are stored here and ordered by operational priority.' : 'Tus ideas enviadas se guardan aquí y se ordenan por prioridad operacional.')}</p>
+      </div>
+      <span className="it-permission-badge"><ListFilter size={14}/>{isEn ? 'Priority order' : 'Orden de prioridad'}</span>
+    </header>
+    <div className="it-idea-metrics">
+      <div><strong>{sortedProposals.length}</strong><span>{isEn ? 'Total ideas' : 'Ideas totales'}</span></div>
+      <div><strong>{highPriorityCount}</strong><span>{isEn ? 'High / critical' : 'Altas / críticas'}</span></div>
+      <div><strong>{applicationCount}</strong><span>{isEn ? 'Applications with ideas' : 'Aplicaciones con ideas'}</span></div>
+    </div>
+    {loading ? <div className="it-empty"><RefreshCw/><p>{isEn ? 'Loading saved ideas…' : 'Cargando ideas guardadas…'}</p></div> : <div className="it-priority-board">
+      {priorityOrder.map(priority => {
+        const group = sortedProposals.filter(proposal => proposalPriority(proposal) === priority);
+        return <section className={`it-priority-group ${priority.toLowerCase()}`} key={priority}>
+          <div className="it-priority-heading"><span className={`it-priority-marker ${priority.toLowerCase()}`}/><h3>{label(priority, isEn)}</h3><b>{group.length}</b></div>
+          {group.length ? <div className="it-priority-list">{group.map(idea => <button className="it-priority-item" key={idea.id} onClick={() => onOpenProposal(idea)}>
+            <div className="it-priority-item-main"><strong>{idea.title}</strong><small>{idea.applicationName} · {idea.submitter?.name || (isEn ? 'Unknown author' : 'Autor desconocido')}</small><p>{idea.description}</p></div>
+            <div className="it-priority-item-meta"><span className={`it-pill ${idea.status.toLowerCase()}`}>{label(idea.status, isEn)}</span><small>{displayDate(idea.createdAt, isEn)}</small></div>
+          </button>)}</div> : <p className="it-priority-empty">{isEn ? 'No ideas in this priority.' : 'No hay ideas con esta prioridad.'}</p>}
+        </section>;
+      })}
+      {!sortedProposals.length && <div className="it-empty"><Lightbulb/><p>{isEn ? 'No ideas have been submitted yet.' : 'Todavía no se han enviado ideas.'}</p></div>}
+    </div>}
+  </section>;
+}
 
 export default function ITWorkspace({ lang = 'en', session }) {
   const isEn = lang === 'en';
@@ -106,7 +151,7 @@ export default function ITWorkspace({ lang = 'en', session }) {
         isEn ? 'Idea could not be submitted.' : 'No se pudo enviar la idea.',
       );
       if (!payload.proposal?.id) throw new Error(isEn ? 'The idea was not confirmed by the server.' : 'El servidor no confirmó el guardado de la idea.');
-      setProposals(current => [payload.proposal, ...current.filter(item => item.id !== payload.proposal.id)]);
+      setProposals(current => sortProposals([payload.proposal, ...current.filter(item => item.id !== payload.proposal.id)]));
       setProposalForm({ ...blankProposal });
       setProposalOpen(false);
       proposalSubmissionKey.current = '';
@@ -153,8 +198,8 @@ export default function ITWorkspace({ lang = 'en', session }) {
     <div className="it-boundary"><ShieldCheck size={19}/><div><strong>{isEn ? 'Keep ideas operational and confidential' : 'Mantén las ideas operacionales y confidenciales'}</strong><span>{isEn ? 'Do not include patient data, PHI, passwords, tokens, secrets or confidential records. IT generates the expected outcome and impact from the idea.' : 'No incluyas datos de pacientes, PHI, contraseñas, tokens, secretos ni expedientes confidenciales. IT genera el resultado esperado y el impacto a partir de la idea.'}</span></div></div>
     {error && <div className="it-error"><AlertTriangle size={16}/>{error}</div>}
     {proposalNotice && <div className="it-success" role="status"><CheckCircle2 size={16}/>{proposalNotice}</div>}
-    {loading ? <div className="it-card it-empty"><RefreshCw/><p>{isEn ? 'Loading IT applications…' : 'Cargando aplicaciones de IT…'}</p></div> : <ApplicationScopeDirectory scopes={scopes} roadmap={roadmap} proposals={proposals} lang={lang} loading={scopeLoading} onRefresh={loadScope} onOpenRoadmap={openRoadmap} onOpenProposal={openProposal}/>}
-    <section className="it-card"><header className="it-section-heading"><div><span>{fullAccess ? (isEn ? 'COWORKER IDEAS · IT INBOX' : 'IDEAS DE COLABORADORES · BANDEJA DE IT') : (isEn ? 'MY IDEAS' : 'MIS IDEAS')}</span><h2>{isEn ? 'Submitted ideas' : 'Ideas enviadas'}</h2><p>{isEn ? 'Each idea shows who submitted it and when. IT calculates the expected outcome and impact automatically.' : 'Cada idea muestra quién la envió y cuándo. IT calcula automáticamente el resultado esperado y el impacto.'}</p></div><span className="it-permission-badge"><Lightbulb size={14}/>{proposals.length} {isEn ? 'recorded' : 'registradas'}</span></header><div className="it-proposal-list">{proposals.map(row => <button className="it-proposal-row it-proposal-button" key={row.id} onClick={() => openProposal(row)}><div><span className={`it-pill ${row.status.toLowerCase()}`}>{label(row.status, isEn)}</span><small>{row.applicationName} · {row.submitter?.name || (isEn ? 'Unknown author' : 'Autor desconocido')} · {displayDate(row.createdAt, isEn)}</small><h3>{row.title}</h3><p>{row.description}</p></div><div><span className={`it-pill ${row.suggestedPriority.toLowerCase()}`}>{label(row.suggestedPriority, isEn)}</span>{row.assignedTo && <small>{isEn ? 'Assigned:' : 'Asignada:'} {row.assignedTo}</small>}</div></button>)}{!proposals.length && <div className="it-empty"><Lightbulb/><p>{isEn ? 'No ideas have been submitted yet.' : 'Todavía no se han enviado ideas.'}</p></div>}</div></section>
+    <IdeaPriorityDashboard proposals={proposals} fullAccess={fullAccess} isEn={isEn} loading={loading} onOpenProposal={openProposal}/>
+    {loading ? <div className="it-card it-empty"><RefreshCw/><p>{isEn ? 'Loading IT applications…' : 'Cargando aplicaciones de IT…'}</p></div> : <ApplicationScopeDirectory scopes={scopes} roadmap={roadmap} proposals={sortProposals(proposals)} lang={lang} loading={scopeLoading} onRefresh={loadScope} onOpenRoadmap={openRoadmap} onOpenProposal={openProposal}/>}
 
     {proposalOpen && <div className="modal-backdrop" onMouseDown={event => event.target === event.currentTarget && closeProposalForm()}><form className="quick-modal it-modal" onSubmit={submitProposal}><div className="modal-heading"><div><span>{isEn ? 'COWORKER INPUT' : 'APORTE DEL COLABORADOR'}</span><h2>{isEn ? 'Submit an idea' : 'Enviar una idea'}</h2></div><button type="button" disabled={saving} onClick={closeProposalForm} aria-label={isEn ? 'Close' : 'Cerrar'}><X/></button></div><p className="it-warning"><ShieldCheck size={15}/>{isEn ? 'Only describe the idea or problem. Expected outcome and impact are generated by the system.' : 'Solo describe la idea o el problema. El resultado esperado y el impacto los genera el sistema.'}</p>{proposalError && <div className="it-error" role="alert"><AlertTriangle size={16}/>{proposalError}</div>}<div className="it-form-grid"><label>{isEn ? 'Related application' : 'Aplicación relacionada'}<select required value={proposalForm.applicationId} onChange={event => updateProposalField('applicationId', event.target.value)}><option value="">{isEn ? 'Select an application' : 'Selecciona una aplicación'}</option>{applications.map(app => <option key={app.id} value={app.id}>{app.name}</option>)}</select></label><label>{isEn ? 'Priority' : 'Prioridad'}<select value={proposalForm.suggestedPriority} onChange={event => updateProposalField('suggestedPriority', event.target.value)}>{priorities.map(priority => <option key={priority}>{priority}</option>)}</select></label><label>{isEn ? 'Category' : 'Categoría'}<select value={proposalForm.category} onChange={event => updateProposalField('category', event.target.value)}>{categories.map(category => <option key={category}>{category}</option>)}</select></label><label className="it-wide">{isEn ? 'Idea title' : 'Título de la idea'}<input required value={proposalForm.title} onChange={event => updateProposalField('title', event.target.value)}/></label><label className="it-wide">{isEn ? 'Describe the idea or problem' : 'Describe la idea o el problema'}<textarea required rows="5" value={proposalForm.description} onChange={event => updateProposalField('description', event.target.value)}/></label></div><div className="modal-actions"><button type="button" disabled={saving} onClick={closeProposalForm}>{isEn ? 'Cancel' : 'Cancelar'}</button><button className="primary" disabled={saving} type="submit"><Save size={16}/>{saving ? (isEn ? 'Sending…' : 'Enviando…') : (isEn ? 'Submit idea' : 'Enviar idea')}</button></div></form></div>}
 

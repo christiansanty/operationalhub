@@ -20,7 +20,7 @@ export const integrationStates = ['REGISTERED', 'CONFIGURED', 'CONNECTOR_CONFIGU
 export const monitoringStates = ['NOT_CONNECTED', 'CONFIGURED', 'MONITORING_VERIFIED'];
 export const roadmapStatuses = ['NOT_STARTED', 'PLANNED', 'IN_PROGRESS', 'BLOCKED', 'COMPLETED'];
 export const proposalStatuses = ['SUBMITTED', 'IN_REVIEW', 'ACCEPTED', 'PLANNED', 'IN_PROGRESS', 'DECLINED', 'COMPLETED'];
-export const priorities = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
+export const priorities = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
 export const proposalCategories = ['ERROR', 'IMPROVEMENT', 'NEW_FEATURE', 'INTEGRATION', 'OTHER'];
 
 const universalCatalog = [
@@ -402,7 +402,7 @@ export function updateItRoadmap(id, payload, actorId) {
 }
 
 function publicProposal(row, includeContact = false) {
-  const result = { id: row.id, applicationId: row.application_id, applicationName: row.application_name, title: row.title, description: row.description, expectedOutcome: row.expected_outcome, impact: row.impact, suggestedPriority: row.suggested_priority, category: row.category, status: row.status, assignedTo: row.assigned_to || '', itComment: row.it_comment || '', declineReason: row.decline_reason || '', createdAt: row.created_at, updatedAt: row.updated_at, submitter: { id: row.submitter_id, name: row.submitter_name } };
+  const result = { id: row.id, applicationId: row.application_id, applicationName: row.application_name, title: row.title, description: row.description, expectedOutcome: row.expected_outcome, impact: row.impact, priority: row.suggested_priority, suggestedPriority: row.suggested_priority, category: row.category, status: row.status, assignedTo: row.assigned_to || '', itComment: row.it_comment || '', declineReason: row.decline_reason || '', createdAt: row.created_at, updatedAt: row.updated_at, submitter: { id: row.submitter_id, name: row.submitter_name } };
   if (includeContact) result.submitter.email = row.submitter_email;
   return result;
 }
@@ -415,7 +415,7 @@ function proposalRow(database, id, actorId, fullAccess) {
 export function listItProposals({ actorId, fullAccess = false } = {}) {
   const database = openDatabase();
   try {
-    return database.prepare(`SELECT p.*, a.name AS application_name FROM it_proposals p JOIN it_applications a ON a.id = p.application_id WHERE (? = 1 OR p.submitter_id = ?) ORDER BY p.updated_at DESC`).all(fullAccess ? 1 : 0, actorId || '').map(row => publicProposal(row, fullAccess));
+    return database.prepare(`SELECT p.*, a.name AS application_name FROM it_proposals p JOIN it_applications a ON a.id = p.application_id WHERE (? = 1 OR p.submitter_id = ?) ORDER BY CASE p.suggested_priority WHEN 'CRITICAL' THEN 0 WHEN 'HIGH' THEN 1 WHEN 'MEDIUM' THEN 2 WHEN 'LOW' THEN 3 ELSE 4 END, p.updated_at DESC`).all(fullAccess ? 1 : 0, actorId || '').map(row => publicProposal(row, fullAccess));
   } finally { database.close(); }
 }
 
