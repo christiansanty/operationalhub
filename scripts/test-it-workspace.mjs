@@ -41,8 +41,8 @@ try {
     assert.equal(response.status, 200);
     return response.headers.get('set-cookie').split(';')[0];
   };
-  const request = async (method, pathname, cookie, body) => {
-    const response = await fetch(`${baseUrl}${pathname}`, { method, headers: { cookie, ...(body ? { 'content-type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined });
+  const request = async (method, pathname, cookie, body, extraHeaders = {}) => {
+    const response = await fetch(`${baseUrl}${pathname}`, { method, headers: { cookie, ...(body ? { 'content-type': 'application/json' } : {}), ...extraHeaders }, body: body ? JSON.stringify(body) : undefined });
     return { status: response.status, payload: await response.json() };
   };
   const viewerCookie = await login(viewer);
@@ -83,9 +83,17 @@ try {
   assert.equal(pushedScope.scope.syncState, 'PUSH_RECEIVED');
   const appId = catalog.payload.applications[0].id;
   const proposalBody = { applicationId: appId, title: 'A safe improvement', description: 'Improve a workflow without confidential records.', expectedOutcome: 'Reduce manual work.', impact: 'Fewer duplicate steps.', suggestedPriority: 'HIGH', category: 'IMPROVEMENT' };
-  const created = await request('POST', '/api/it/proposals', viewerCookie, proposalBody);
+  const proposalRequestId = 'idea-test-request-001';
+  const created = await request('POST', '/api/it/proposals', viewerCookie, proposalBody, { 'x-idempotency-key': proposalRequestId });
   assert.equal(created.status, 201);
+  assert.equal(created.payload.replayed, false);
   assert.equal(created.payload.proposal.submitter, undefined);
+  const replayed = await request('POST', '/api/it/proposals', viewerCookie, proposalBody, { 'x-idempotency-key': proposalRequestId });
+  assert.equal(replayed.status, 200);
+  assert.equal(replayed.payload.replayed, true);
+  assert.equal(replayed.payload.proposal.id, created.payload.proposal.id);
+  const mismatchedReplay = await request('POST', '/api/it/proposals', viewerCookie, { ...proposalBody, title: 'A different idea' }, { 'x-idempotency-key': proposalRequestId });
+  assert.equal(mismatchedReplay.status, 409);
   const own = await request('GET', '/api/it/proposals', viewerCookie);
   assert.equal(own.status, 200);
   assert.equal(own.payload.proposals.length, 1);
@@ -112,6 +120,9 @@ try {
   database.close();
   const component = await readFile(path.resolve('src/it/ITWorkspace.jsx'), 'utf8');
   assert.equal(component.includes('localStorage'), false);
+  assert.ok(component.includes('x-idempotency-key'));
+  assert.ok(component.includes('proposalNotice'));
+  assert.ok(component.includes('proposalError'));
   console.log('IT roadmap permissions, proposal isolation, audit and evidence-state tests passed.');
 } finally {
   if (server?.exitCode === null) { server.kill('SIGTERM'); await new Promise(resolve => server.once('exit', resolve)); }

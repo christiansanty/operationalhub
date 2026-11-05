@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
@@ -114,6 +114,8 @@ function openDatabase() {
       assigned_to TEXT,
       it_comment TEXT,
       decline_reason TEXT,
+      idempotency_key TEXT,
+      request_fingerprint TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -151,7 +153,10 @@ function openDatabase() {
   for (const statement of [
     "ALTER TABLE it_roadmap_items ADD COLUMN planned_environments_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE it_roadmap_items ADD COLUMN verified_environments_json TEXT NOT NULL DEFAULT '[]'",
+    'ALTER TABLE it_proposals ADD COLUMN idempotency_key TEXT',
+    'ALTER TABLE it_proposals ADD COLUMN request_fingerprint TEXT',
   ]) { try { database.exec(statement); } catch {} }
+  database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_it_proposals_idempotency ON it_proposals(submitter_id, idempotency_key) WHERE idempotency_key IS NOT NULL');
   ensureCatalog(database);
   return database;
 }
@@ -420,16 +425,36 @@ export function getItProposal(id, { actorId, fullAccess = false } = {}) {
   finally { database.close(); }
 }
 
-export function createItProposal(payload, actor) {
+function proposalIdempotencyKey(value) {
+  const key = String(value || '').trim();
+  if (!key) return null;
+  if (!/^[A-Za-z0-9._-]{12,160}$/.test(key)) { const error = new Error('Invalid request id.'); error.statusCode = 400; throw error; }
+  return key;
+}
+
+export function createItProposal(payload, actor, { idempotencyKey: requestIdempotencyKey } = {}) {
   const applicationId = safeText(payload.applicationId, 120);
   const title = safeText(payload.title, 200);
   const description = safeText(payload.description, 3000);
   const suggestedPriority = enumValue(payload.suggestedPriority, priorities, 'MEDIUM');
   const category = enumValue(payload.category, proposalCategories, 'OTHER');
+  const idempotencyKey = proposalIdempotencyKey(requestIdempotencyKey);
+  const requestFingerprint = idempotencyKey
+    ? createHash('sha256').update(JSON.stringify({ applicationId, title, description, suggestedPriority, category })).digest('hex')
+    : null;
   const database = openDatabase();
   try {
     const application = database.prepare('SELECT id, name FROM it_applications WHERE id = ?').get(applicationId);
     if (!application) { const error = new Error('Application is not registered in the IT catalog.'); error.statusCode = 404; throw error; }
+    if (idempotencyKey) {
+      const existing = database.prepare('SELECT * FROM it_proposals WHERE submitter_id = ? AND idempotency_key = ?').get(actor.id, idempotencyKey);
+      if (existing) {
+        if (existing.request_fingerprint !== requestFingerprint) { const error = new Error('This request id was already used for a different idea.'); error.statusCode = 409; throw error; }
+        const proposal = publicProposal(proposalRow(database, existing.id, actor.id, true), false);
+        delete proposal.submitter;
+        return { proposal, replayed: true };
+      }
+    }
     const context = `${title} ${description}`.toLowerCase();
     const focus = context.includes('error') || context.includes('bug') || context.includes('fall') ? 'reliability and issue resolution'
       : context.includes('report') || context.includes('metric') || context.includes('dashboard') ? 'visibility and reporting'
@@ -439,11 +464,13 @@ export function createItProposal(payload, actor) {
     const expectedOutcome = `System-generated from the submitted idea: clarify and evaluate the proposed change for ${application.name}, with focus on ${focus}.`;
     const impact = `System-generated assessment: if implemented, this idea could improve ${focus} by reducing friction, making ownership clearer and giving IT a measurable change to validate.`;
     const id = randomUUID(); const timestamp = now();
-    database.prepare('INSERT INTO it_proposals (id,application_id,submitter_id,submitter_name,submitter_email,title,description,expected_outcome,impact,suggested_priority,category,status,assigned_to,it_comment,decline_reason,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, applicationId, actor.id, safeText(actor.name, 160), safeText(actor.email, 320), title, description, expectedOutcome, impact, suggestedPriority, category, 'SUBMITTED', null, null, null, timestamp, timestamp);
+    database.prepare('INSERT INTO it_proposals (id,application_id,submitter_id,submitter_name,submitter_email,title,description,expected_outcome,impact,suggested_priority,category,status,assigned_to,it_comment,decline_reason,idempotency_key,request_fingerprint,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, applicationId, actor.id, safeText(actor.name, 160), safeText(actor.email, 320), title, description, expectedOutcome, impact, suggestedPriority, category, 'SUBMITTED', null, null, null, idempotencyKey, requestFingerprint, timestamp, timestamp);
     database.prepare('INSERT INTO it_proposal_history (id,proposal_id,actor_id,changed_fields_json,created_at) VALUES (?,?,?,?,?)').run(randomUUID(), id, actor.id, JSON.stringify(['created']), timestamp);
     audit(actor.id, 'it_proposal_created', id, { applicationId, category, suggestedPriority });
-    return publicProposal(proposalRow(database, id, actor.id, true), false);
+    const proposal = publicProposal(proposalRow(database, id, actor.id, true), false);
+    delete proposal.submitter;
+    return { proposal, replayed: false };
   } finally { database.close(); }
 }
 

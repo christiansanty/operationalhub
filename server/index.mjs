@@ -655,7 +655,8 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'POST' && url.pathname === '/api/it/proposals') {
       const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
-      return json(response, 201, { proposal: createItProposal(await readJson(request, 128 * 1024), access.actor) });
+      const created = createItProposal(await readJson(request, 128 * 1024), access.actor, { idempotencyKey: request.headers['x-idempotency-key'] });
+      return json(response, created.replayed ? 200 : 201, created);
     }
     if (request.method === 'GET' && /^\/api\/it\/proposals\/[^/]+$/.test(url.pathname)) {
       const access = itActor(request); if (access.status !== 200) return json(response, 401, { error: 'Authentication required' });
