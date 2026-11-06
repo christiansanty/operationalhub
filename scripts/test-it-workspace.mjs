@@ -112,6 +112,13 @@ try {
   const prioritized = await request('GET', '/api/it/proposals', managerCookie);
   assert.deepEqual(prioritized.payload.proposals.map(row => row.suggestedPriority), ['CRITICAL', 'HIGH', 'HIGH', 'LOW']);
   assert.equal(prioritized.payload.proposals.find(row => row.title === 'Low priority idea').applicationId, appId);
+  const scheduled = await request('POST', '/api/it/proposals', managerCookie, { ...proposalBody, title: 'Scheduled application idea', suggestedPriority: 'MEDIUM', dueAt: '2026-12-31' }, { 'x-idempotency-key': 'idea-manager-scheduled-001' });
+  assert.equal(scheduled.status, 201);
+  assert.equal(scheduled.payload.proposal.dueAt, '2026-12-31');
+  const completed = await request('PATCH', `/api/it/proposals/${scheduled.payload.proposal.id}`, managerCookie, { status: 'COMPLETED' });
+  assert.equal(completed.status, 200);
+  assert.equal(completed.payload.proposal.status, 'COMPLETED');
+  assert.ok(completed.payload.proposal.completedAt);
   assert.equal((await request('PATCH', `/api/it/proposals/${ownId}`, managerCookie, { status: 'DECLINED' })).status, 400);
   assert.equal((await request('PATCH', `/api/it/proposals/${ownId}`, managerCookie, { status: 'DECLINED', declineReason: 'Not aligned with current scope.' })).status, 200);
   assert.equal((await request('POST', '/api/it/proposals', viewerCookie, { ...proposalBody, title: 'password token patient PHI' })).status, 400);

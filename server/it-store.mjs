@@ -114,6 +114,8 @@ function openDatabase() {
       assigned_to TEXT,
       it_comment TEXT,
       decline_reason TEXT,
+      due_at TEXT,
+      completed_at TEXT,
       idempotency_key TEXT,
       request_fingerprint TEXT,
       created_at TEXT NOT NULL,
@@ -155,6 +157,8 @@ function openDatabase() {
     "ALTER TABLE it_roadmap_items ADD COLUMN verified_environments_json TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE it_proposals ADD COLUMN idempotency_key TEXT',
     'ALTER TABLE it_proposals ADD COLUMN request_fingerprint TEXT',
+    'ALTER TABLE it_proposals ADD COLUMN due_at TEXT',
+    'ALTER TABLE it_proposals ADD COLUMN completed_at TEXT',
   ]) { try { database.exec(statement); } catch {} }
   database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_it_proposals_idempotency ON it_proposals(submitter_id, idempotency_key) WHERE idempotency_key IS NOT NULL');
   ensureCatalog(database);
@@ -402,7 +406,7 @@ export function updateItRoadmap(id, payload, actorId) {
 }
 
 function publicProposal(row, includeContact = false) {
-  const result = { id: row.id, applicationId: row.application_id, applicationName: row.application_name, title: row.title, description: row.description, expectedOutcome: row.expected_outcome, impact: row.impact, priority: row.suggested_priority, suggestedPriority: row.suggested_priority, category: row.category, status: row.status, assignedTo: row.assigned_to || '', itComment: row.it_comment || '', declineReason: row.decline_reason || '', createdAt: row.created_at, updatedAt: row.updated_at, submitter: { id: row.submitter_id, name: row.submitter_name } };
+  const result = { id: row.id, applicationId: row.application_id, applicationName: row.application_name, title: row.title, description: row.description, expectedOutcome: row.expected_outcome, impact: row.impact, priority: row.suggested_priority, suggestedPriority: row.suggested_priority, category: row.category, status: row.status, assignedTo: row.assigned_to || '', itComment: row.it_comment || '', declineReason: row.decline_reason || '', dueAt: row.due_at || '', completedAt: row.completed_at || '', createdAt: row.created_at, updatedAt: row.updated_at, submitter: { id: row.submitter_id, name: row.submitter_name } };
   if (includeContact) result.submitter.email = row.submitter_email;
   return result;
 }
@@ -438,6 +442,7 @@ export function createItProposal(payload, actor, { idempotencyKey: requestIdempo
   const description = safeText(payload.description, 3000);
   const suggestedPriority = enumValue(payload.suggestedPriority, priorities, 'MEDIUM');
   const category = enumValue(payload.category, proposalCategories, 'OTHER');
+  const dueAt = payload.dueAt === undefined ? null : nullable(safeText(payload.dueAt, 80, false), 80);
   const idempotencyKey = proposalIdempotencyKey(requestIdempotencyKey);
   const requestFingerprint = idempotencyKey
     ? createHash('sha256').update(JSON.stringify({ applicationId, title, description, suggestedPriority, category })).digest('hex')
@@ -464,8 +469,8 @@ export function createItProposal(payload, actor, { idempotencyKey: requestIdempo
     const expectedOutcome = `System-generated from the submitted idea: clarify and evaluate the proposed change for ${application.name}, with focus on ${focus}.`;
     const impact = `System-generated assessment: if implemented, this idea could improve ${focus} by reducing friction, making ownership clearer and giving IT a measurable change to validate.`;
     const id = randomUUID(); const timestamp = now();
-    database.prepare('INSERT INTO it_proposals (id,application_id,submitter_id,submitter_name,submitter_email,title,description,expected_outcome,impact,suggested_priority,category,status,assigned_to,it_comment,decline_reason,idempotency_key,request_fingerprint,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, applicationId, actor.id, safeText(actor.name, 160), safeText(actor.email, 320), title, description, expectedOutcome, impact, suggestedPriority, category, 'SUBMITTED', null, null, null, idempotencyKey, requestFingerprint, timestamp, timestamp);
+    database.prepare('INSERT INTO it_proposals (id,application_id,submitter_id,submitter_name,submitter_email,title,description,expected_outcome,impact,suggested_priority,category,status,assigned_to,it_comment,decline_reason,due_at,completed_at,idempotency_key,request_fingerprint,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, applicationId, actor.id, safeText(actor.name, 160), safeText(actor.email, 320), title, description, expectedOutcome, impact, suggestedPriority, category, 'SUBMITTED', null, null, null, dueAt, null, idempotencyKey, requestFingerprint, timestamp, timestamp);
     database.prepare('INSERT INTO it_proposal_history (id,proposal_id,actor_id,changed_fields_json,created_at) VALUES (?,?,?,?,?)').run(randomUUID(), id, actor.id, JSON.stringify(['created']), timestamp);
     audit(actor.id, 'it_proposal_created', id, { applicationId, category, suggestedPriority });
     const proposal = publicProposal(proposalRow(database, id, actor.id, true), false);
@@ -485,6 +490,7 @@ export function updateItProposal(id, payload, actorId) {
     const assignedTo = payload.assignedTo === undefined ? current.assigned_to : nullable(safeText(payload.assignedTo, 160, false), 160);
     const itComment = payload.itComment === undefined ? current.it_comment : nullable(safeText(payload.itComment, 2000, false), 2000);
     const declineReason = payload.declineReason === undefined ? current.decline_reason : nullable(safeText(payload.declineReason, 1600, false), 1600);
+    const dueAt = payload.dueAt === undefined ? current.due_at || null : nullable(safeText(payload.dueAt, 80, false), 80);
     if (status === 'DECLINED' && !declineReason) { const error = new Error('A decline explanation is required.'); error.statusCode = 400; throw error; }
     const changedFields = [];
     if (status !== current.status) changedFields.push('status');
@@ -494,7 +500,10 @@ export function updateItProposal(id, payload, actorId) {
     if (itComment !== current.it_comment) changedFields.push('itComment');
     if (declineReason !== current.decline_reason) changedFields.push('declineReason');
     const timestamp = now();
-    database.prepare('UPDATE it_proposals SET suggested_priority=?,category=?,status=?,assigned_to=?,it_comment=?,decline_reason=?,updated_at=? WHERE id=?').run(suggestedPriority, category, status, assignedTo, itComment, declineReason, timestamp, id);
+    if (dueAt !== (current.due_at || null)) changedFields.push('dueAt');
+    const completedAt = status === 'COMPLETED' ? (current.completed_at || timestamp) : null;
+    if (completedAt !== (current.completed_at || null)) changedFields.push('completedAt');
+    database.prepare('UPDATE it_proposals SET suggested_priority=?,category=?,status=?,assigned_to=?,it_comment=?,decline_reason=?,due_at=?,completed_at=?,updated_at=? WHERE id=?').run(suggestedPriority, category, status, assignedTo, itComment, declineReason, dueAt, completedAt, timestamp, id);
     database.prepare('INSERT INTO it_proposal_history (id,proposal_id,actor_id,changed_fields_json,created_at) VALUES (?,?,?,?,?)').run(randomUUID(), id, actorId, JSON.stringify(changedFields), timestamp);
     audit(actorId, 'it_proposal_updated', id, { changedFields, status });
     return publicProposal(proposalRow(database, id, actorId, true), true);

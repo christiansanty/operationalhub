@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Boxes, Bot, CalendarDays, ChevronDown, Globe2, Pencil, RefreshCw, UserRound, Wrench,
+  Boxes, Bot, CalendarDays, CheckCircle2, ChevronDown, Globe2, Pencil, RefreshCw, UserRound, Wrench,
 } from 'lucide-react';
 
 const text = (value, lang) => value?.[lang] || value?.en || value?.es || String(value || '');
@@ -26,11 +26,19 @@ function priorityLabel(value, isEn) {
   return labels[value] || value;
 }
 
+function proposalStatusLabel(value, isEn) {
+  const labels = {
+    SUBMITTED: isEn ? 'Submitted' : 'Enviada', IN_REVIEW: isEn ? 'In review' : 'En revisión', ACCEPTED: isEn ? 'Accepted' : 'Aceptada',
+    PLANNED: isEn ? 'Planned' : 'Planificada', IN_PROGRESS: isEn ? 'In progress' : 'En progreso', DECLINED: isEn ? 'Declined' : 'Declinada', COMPLETED: isEn ? 'Completed' : 'Completada',
+  };
+  return labels[value] || String(value || '').replaceAll('_', ' ');
+}
+
 const priorityRank = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
 const ideaPriority = idea => idea.priority || idea.suggestedPriority || 'MEDIUM';
 
 export default function ApplicationScopeDirectory({
-  scopes = [], roadmap = [], proposals = [], lang = 'en', loading = false, onRefresh, onOpenRoadmap, onOpenProposal,
+  scopes = [], roadmap = [], proposals = [], lang = 'en', loading = false, canManage = false, onRefresh, onOpenRoadmap, onOpenProposal, onCompleteProposal,
 }) {
   const isEn = lang === 'en';
   const [openApplicationId, setOpenApplicationId] = useState(null);
@@ -82,7 +90,15 @@ export default function ApplicationScopeDirectory({
             </div>;
           })}</div>
           {!!scope.aiAgents?.length && <div className="it-scope-agents"><div className="it-scope-subheading"><Bot size={16}/><strong>{isEn ? 'AI agents' : 'Agentes de IA'}</strong></div>{scope.aiAgents.map(agent => <div className="it-scope-agent" key={agent.id || text(agent.name, lang)}><strong>{text(agent.name, lang)}</strong><p>{text(agent.function, lang)}</p></div>)}</div>}
-          <div className="it-scope-proposals"><div className="it-scope-subheading"><Wrench size={16}/><strong>{isEn ? 'Ideas for this application' : 'Ideas para esta aplicación'}</strong><span className="it-scope-idea-count">{relatedIdeas.length}{highPriorityIdeas ? ` · ${highPriorityIdeas} ${isEn ? 'high priority' : 'de alta prioridad'}` : ''}</span></div>{relatedIdeas.map(idea => <button className="it-scope-proposal" key={idea.id} onClick={() => onOpenProposal?.(idea)}><div><strong>{idea.title}</strong><small>{idea.submitter?.name || (isEn ? 'Unknown author' : 'Autor desconocido')} · {formatDate(idea.createdAt, isEn)}</small></div><span className={`it-pill ${ideaPriority(idea).toLowerCase()}`}>{priorityLabel(ideaPriority(idea), isEn)}</span></button>)}{!relatedIdeas.length && <p className="it-scope-empty-line">{isEn ? 'No ideas submitted for this application.' : 'No hay ideas enviadas para esta aplicación.'}</p>}</div>
+          <div className="it-scope-proposals"><div className="it-scope-subheading"><Wrench size={16}/><strong>{isEn ? 'Ideas for this application' : 'Ideas para esta aplicación'}</strong><span className="it-scope-idea-count">{relatedIdeas.length}{highPriorityIdeas ? ` · ${highPriorityIdeas} ${isEn ? 'high priority' : 'de alta prioridad'}` : ''}</span></div>{relatedIdeas.map(idea => <article className={`it-scope-proposal ${idea.status === 'COMPLETED' ? 'completed' : ''}`} key={idea.id}>
+            <button className="it-scope-proposal-main" onClick={() => onOpenProposal?.(idea)}>
+              <div className="it-scope-proposal-heading"><strong>{idea.title}</strong><span className={`it-pill ${ideaPriority(idea).toLowerCase()}`}>{priorityLabel(ideaPriority(idea), isEn)}</span><span className={`it-pill ${String(idea.status || '').toLowerCase()}`}>{proposalStatusLabel(idea.status, isEn)}</span></div>
+              <p>{idea.description}</p>
+              <div className="it-scope-proposal-meta"><span><CalendarDays size={12}/><b>{isEn ? 'Entered' : 'Ingresó'}</b>{formatDate(idea.createdAt, isEn)}</span><span><CalendarDays size={12}/><b>{isEn ? 'Deadline' : 'Deadline'}</b>{formatDate(idea.dueAt, isEn)}</span><span><UserRound size={12}/><b>{isEn ? 'Inserted by' : 'Insertada por'}</b>{idea.submitter?.name || (isEn ? 'Unknown author' : 'Autor desconocido')}</span><span><b>{isEn ? 'Process' : 'Proceso'}</b>{proposalStatusLabel(idea.status, isEn)}</span></div>
+            </button>
+            {canManage && idea.status !== 'COMPLETED' && <button className="it-scope-complete" onClick={() => onCompleteProposal?.(idea)}><CheckCircle2 size={15}/>{isEn ? 'Mark completed' : 'Marcar completada'}</button>}
+            {idea.status === 'COMPLETED' && <span className="it-scope-completed"><CheckCircle2 size={14}/>{isEn ? 'Completed' : 'Completada'}{idea.completedAt ? ` · ${formatDate(idea.completedAt, isEn)}` : ''}</span>}
+          </article>)}{!relatedIdeas.length && <p className="it-scope-empty-line">{isEn ? 'No ideas submitted for this application.' : 'No hay ideas enviadas para esta aplicación.'}</p>}</div>
         </div>}
       </article>;
     })}{!scopes.length && <div className="it-empty"><Boxes/><p>{isEn ? 'No applications are available yet.' : 'Todavía no hay aplicaciones disponibles.'}</p></div>}</div>}
