@@ -1,6 +1,6 @@
-run = "pnpm start:deployment"
+run = "node scripts/start-deployment.mjs"
 
 [deployment]
-build = "pnpm build"
-run = "pnpm start:deployment"
+build = "node node_modules/vite/bin/vite.js build"
+run = "node scripts/start-deployment.mjs"
 deploymentTarget = "cloudrun"
