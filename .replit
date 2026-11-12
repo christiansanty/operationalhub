@@ -1,6 +1,6 @@
-run = "pnpm build && pnpm start"
+run = "pnpm start:deployment"
 
 [deployment]
 build = "pnpm build"
-run = "pnpm start"
+run = "pnpm start:deployment"
 deploymentTarget = "cloudrun"

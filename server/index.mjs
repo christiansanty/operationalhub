@@ -372,6 +372,10 @@ async function serveStatic(request, response) {
   let filePath = path.resolve(distRoot, requested);
   if (!filePath.startsWith(`${distRoot}${path.sep}`) && filePath !== path.join(distRoot, 'index.html')) return json(response, 403, { error: 'Forbidden' });
   if (await access(filePath).then(() => false).catch(() => true)) filePath = path.join(distRoot, 'index.html');
+  if (await access(filePath).then(() => false).catch(() => true)) {
+    response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+    return response.end('<!doctype html><html><head><meta charset="utf-8"><title>Operational Hub</title></head><body><p>Operational Hub is starting.</p></body></html>');
+  }
   response.writeHead(200, { 'content-type': mime[path.extname(filePath)] || 'application/octet-stream' });
   createReadStream(filePath).pipe(response);
 }
@@ -1109,7 +1113,7 @@ const server = createServer(async (request, response) => {
   }
 });
 
+server.listen(port, host, () => console.log(`Operational Hub backend listening on http://${host}:${port}`));
 await ingestAcademyExport().catch(() => null);
 if (process.env.ACADEMY_SYNC_ON_START === 'true') syncAcademyBackend().catch((error) => console.error('Academy startup sync failed:', error.message));
 if (process.env.OPERATIONAL_AIRTABLE_SYNC_ON_START === 'true') syncOperationalAirtable().catch((error) => console.error('Operational Airtable startup sync failed:', error.message));
-server.listen(port, host, () => console.log(`Operational Hub backend listening on http://${host}:${port}`));

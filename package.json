@@ -11,6 +11,7 @@
     "preview": "vite preview --host 127.0.0.1",
     "backend": "node --env-file-if-exists=.env.local server/index.mjs",
     "start": "node --env-file-if-exists=.env.local server/index.mjs",
+    "start:deployment": "node scripts/start-deployment.mjs",
     "airtable:export": "node --env-file=.env.local scripts/export-airtable.mjs",
     "airtable:attachments": "node scripts/download-airtable-attachments.mjs",
     "academy:catalog": "node scripts/build-academy-catalog.mjs",
