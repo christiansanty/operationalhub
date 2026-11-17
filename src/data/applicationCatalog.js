@@ -1,26 +1,34 @@
 export const applicationCatalog = [
   {
     id: 'seven-insurance', name: 'Seven Insurance', logo: '/brand/seven-insurance.png', tone: 'seven', envKey: 'VITE_SEVEN_INSURANCE_URL',
-    description: { en: 'Insurance operations, licensed workflows and client servicing.', es: 'Operaciones de seguros, flujos licenciados y servicio al cliente.' },
+    description: { en: 'Insurance operations.', es: 'Operaciones de seguros.' },
   },
   {
     id: 'scribex-health', name: 'ScribeX Health', logo: '/app-logos/scribex.svg', tone: 'scribex', envKey: 'VITE_SCRIBEX_HEALTH_URL',
-    description: { en: 'Clinical documentation and intelligent medical scribing.', es: 'Documentación clínica y scribing médico inteligente.' },
+    description: { en: 'Clinical documentation.', es: 'Documentación clínica.' },
   },
   {
     id: 'carecheck360', name: 'CareCheck360', logo: '/app-logos/carecheck360.svg', tone: 'carecheck', envKey: 'VITE_CARECHECK360_URL',
-    description: { en: 'Chronic Care monitoring, monthly follow-up and documented care coordination.', es: 'Monitoreo de Chronic Care, seguimiento mensual y coordinación documentada.' },
+    description: { en: 'Chronic care follow-up.', es: 'Seguimiento de cuidado crónico.' },
   },
   {
     id: 'financial-hub', name: 'Financial Hub', logo: '/app-logos/financial-hub.svg', tone: 'financial', envKey: 'VITE_FINANCIAL_HUB_URL',
-    description: { en: 'Financial visibility, planning and executive controls.', es: 'Visibilidad financiera, planificación y controles ejecutivos.' },
+    description: { en: 'Financial visibility.', es: 'Visibilidad financiera.' },
   },
   {
     id: 'marketing-suite', name: 'Marketing Suite', logo: '/app-logos/marketing-suite.svg', tone: 'marketing', envKey: 'VITE_MARKETING_SUITE_URL',
-    description: { en: 'Campaign operations, CRM connections and performance.', es: 'Operaciones de campañas, conexión con CRM y rendimiento.' },
+    description: { en: 'Campaign performance.', es: 'Campañas y rendimiento.' },
   },
   {
-    id: 'executive-assistant', name: 'Executive Assistant', logo: '/app-logos/executive-assistant.svg', tone: 'executive', envKey: 'VITE_EXECUTIVE_ASSISTANT_URL',
-    description: { en: 'Personal productivity, follow-up and executive coordination.', es: 'Productividad personal, seguimiento y coordinación ejecutiva.' },
+    id: 'binium', name: 'Binium', logo: '/app-logos/binium.svg', tone: 'binium', envKey: 'VITE_BINIUM_URL',
+    description: { en: 'Connected workflows.', es: 'Flujos conectados.' },
+  },
+  {
+    id: 'em-connect', name: 'EM Connect', logo: '/app-logos/em-connect.svg', tone: 'connect', envKey: 'VITE_EM_CONNECT_URL', fallbackEnvKey: 'VITE_EXECUTIVE_ASSISTANT_URL',
+    description: { en: 'Secure app connections.', es: 'Conexiones seguras.' },
+  },
+  {
+    id: 'universal', name: 'Universal Master RPA', logo: '/app-logos/universal.svg', tone: 'universal', envKey: 'VITE_UNIVERSAL_URL',
+    description: { en: 'Automation orchestration.', es: 'Orquestación de automatizaciones.' },
   },
 ];

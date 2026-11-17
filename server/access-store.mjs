@@ -14,7 +14,7 @@ const permissionValues = new Set(['none', 'view', 'manage']);
 const permissionKeys = new Set([
   'dashboard','entity-medical','entity-care305','entity-aesthetics','entity-seven','entity-research',
   'leads','protocols','licenses','doctor-licenses','contracting','credentialing','academy','human-resources','personnel','admin-users',
-  'app-seven-insurance','app-scribex-health','app-carecheck360','app-financial-hub','app-marketing-suite','app-executive-assistant',
+  'app-seven-insurance','app-scribex-health','app-carecheck360','app-financial-hub','app-marketing-suite','app-binium','app-em-connect','app-universal',
   'research-leads:view','research-leads:manage','research-leads:contact:view',
   'research-studies:view','research-studies:manage','research-sync:manage',
   'research-fundamental-studies:view','research-fundamental-studies:manage',

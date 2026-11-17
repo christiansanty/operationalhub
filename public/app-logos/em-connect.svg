@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="EM Connect">
+  <defs><linearGradient id="connect-bg" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse"><stop stop-color="#0f766e"/><stop offset="1" stop-color="#2563eb"/></linearGradient></defs>
+  <rect width="64" height="64" rx="14" fill="url(#connect-bg)"/>
+  <path d="M20 25h14a7 7 0 0 1 0 14H25a7 7 0 0 1 0-14Zm10 7h14a7 7 0 0 1 0 14H35a7 7 0 0 1 0-14Z" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+  <circle cx="20" cy="32" r="3" fill="#bfdbfe"/><circle cx="44" cy="39" r="3" fill="#99f6e4"/>
+</svg>

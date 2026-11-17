@@ -20,6 +20,20 @@ export const applicationScopeCatalog = [
     ],
   },
   {
+    id: 'em-connect',
+    name: 'EM Connect',
+    version: '1.0.0',
+    purpose: {
+      en: 'Secure connection layer for approved application events and handoffs.',
+      es: 'Capa segura de conexión para eventos y entregas aprobadas entre aplicaciones.',
+    },
+    modules: [
+      { id: 'events', name: { en: 'Application events', es: 'Eventos de aplicaciones' }, summary: { en: 'Receives and routes approved events between connected applications.', es: 'Recibe y enruta eventos aprobados entre aplicaciones conectadas.' }, tools: ['Event intake', 'Routing status', 'Delivery logs'], aiRole: { en: 'Agents summarize delivery health and flag exceptions for human review.', es: 'Los agentes resumen la salud de entregas y señalan excepciones para revisión humana.' } },
+      { id: 'handoffs', name: { en: 'Secure handoffs', es: 'Entregas seguras' }, summary: { en: 'Keeps cross-application handoffs traceable and contract-aware.', es: 'Mantiene trazables y alineadas al contrato las entregas entre aplicaciones.' }, tools: ['Signed payloads', 'Connector checks', 'Audit trail'], aiRole: { en: 'Agents identify missing evidence without changing source records.', es: 'Los agentes identifican evidencia faltante sin cambiar registros fuente.' } },
+    ],
+    aiAgents: [{ name: { en: 'EM Connect monitoring agent', es: 'Agente de monitoreo EM Connect' }, function: { en: 'Reports connector health and delivery exceptions.', es: 'Reporta salud de conectores y excepciones de entrega.' } }],
+  },
+  {
     id: 'operational-hub',
     name: 'Operational Hub',
     version: '1.0.0',
