@@ -43,7 +43,12 @@ export default function ApplicationScopeDirectory({
   const isEn = lang === 'en';
   const [openApplicationId, setOpenApplicationId] = useState(null);
   const [openModuleKey, setOpenModuleKey] = useState(null);
-  const roadmapByApplication = new Map(roadmap.map(item => [item.applicationId, item]));
+  const roadmapByApplication = roadmap.reduce((map, item) => {
+    const tasks = map.get(item.applicationId) || [];
+    tasks.push(item);
+    map.set(item.applicationId, tasks);
+    return map;
+  }, new Map());
 
   return <section className="it-card it-scope-card">
     <header className="it-section-heading">
@@ -55,7 +60,8 @@ export default function ApplicationScopeDirectory({
       <div className="it-scope-heading-actions"><span className="it-permission-badge"><Globe2 size={14}/>{isEn ? 'Visible to IT users' : 'Visible para usuarios de IT'}</span><button className="icon-btn" onClick={onRefresh} title={isEn ? 'Refresh applications' : 'Actualizar aplicaciones'} disabled={loading}><RefreshCw size={16}/></button></div>
     </header>
     {loading ? <div className="it-empty"><RefreshCw/><p>{isEn ? 'Loading applications…' : 'Cargando aplicaciones…'}</p></div> : <div className="it-scope-directory">{scopes.map(scope => {
-      const implementation = roadmapByApplication.get(scope.applicationId);
+      const applicationTasks = roadmapByApplication.get(scope.applicationId) || [];
+      const averageProgress = applicationTasks.length ? Math.round(applicationTasks.reduce((sum, task) => sum + (Number(task.progress) || 0), 0) / applicationTasks.length) : 0;
       const relatedIdeas = proposals.filter(proposal => proposal.applicationId === scope.applicationId).sort((left, right) => {
         const priorityDifference = (priorityRank[ideaPriority(left)] ?? 4) - (priorityRank[ideaPriority(right)] ?? 4);
         if (priorityDifference) return priorityDifference;
@@ -67,7 +73,7 @@ export default function ApplicationScopeDirectory({
         <button className="it-scope-application-toggle" onClick={() => setOpenApplicationId(open ? null : scope.applicationId)} aria-expanded={open}>
           <span className="it-scope-app-icon"><Boxes size={19}/></span>
           <span className="it-scope-app-title"><strong>{scope.applicationName}</strong><small>{text(scope.purpose, lang)}</small></span>
-          <span className="it-scope-app-status"><b>{implementation ? `${implementation.progress}% · ${statusLabel(implementation.status, isEn)}` : (isEn ? 'No IT work recorded' : 'Sin trabajo de IT')}</b><small>{scope.modules.length} {isEn ? (scope.modules.length === 1 ? 'module' : 'modules') : (scope.modules.length === 1 ? 'módulo' : 'módulos')} · {relatedIdeas.length} {isEn ? (relatedIdeas.length === 1 ? 'idea' : 'ideas') : (relatedIdeas.length === 1 ? 'idea' : 'ideas')}</small></span>
+          <span className="it-scope-app-status"><b>{applicationTasks.length ? `${averageProgress}% · ${applicationTasks.length} ${isEn ? (applicationTasks.length === 1 ? 'task' : 'tasks') : (applicationTasks.length === 1 ? 'tarea' : 'tareas')}` : (isEn ? 'No IT work recorded' : 'Sin trabajo de IT')}</b><small>{scope.modules.length} {isEn ? (scope.modules.length === 1 ? 'module' : 'modules') : (scope.modules.length === 1 ? 'módulo' : 'módulos')} · {relatedIdeas.length} {isEn ? (relatedIdeas.length === 1 ? 'idea' : 'ideas') : (relatedIdeas.length === 1 ? 'idea' : 'ideas')}</small></span>
           <ChevronDown className="it-scope-chevron" size={18}/>
         </button>
         {open && <div className="it-scope-application-detail">
@@ -75,11 +81,11 @@ export default function ApplicationScopeDirectory({
           <div className="it-scope-purpose"><div><b>{isEn ? 'What it does' : 'Qué hace'}</b><p>{text(scope.purpose, lang)}</p></div></div>
           <div className="it-scope-work-section">
             <div className="it-scope-subheading"><Wrench size={16}/><strong>{isEn ? 'IT work' : 'Trabajo de IT'}</strong></div>
-            {implementation ? <button className="it-scope-work-item" onClick={() => onOpenRoadmap?.(implementation)}>
-              <div><strong>{implementation.phase}</strong><small>{isEn ? 'Open task details' : 'Abrir detalle de la tarea'}</small></div>
-              <div className="it-scope-work-status"><span className={`it-pill ${implementation.priority.toLowerCase()}`}>{priorityLabel(implementation.priority, isEn)}</span><span className={`it-pill ${implementation.status.toLowerCase()}`}>{statusLabel(implementation.status, isEn)}</span><b>{implementation.progress}%</b></div><Pencil size={15}/>
-            </button> : <p className="it-scope-empty-line">{isEn ? 'No IT task has been recorded for this application yet.' : 'Todavía no hay una tarea de IT registrada para esta aplicación.'}</p>}
-            {implementation && <div className="it-scope-work-meta"><span><CalendarDays size={13}/>{isEn ? 'Created' : 'Creada'} {formatDate(implementation.createdAt, isEn)} · {implementation.createdBy}</span><span><UserRound size={13}/>{isEn ? 'Working on it' : 'Trabaja en ella'} {implementation.owner || (isEn ? 'Not assigned' : 'Sin asignar')}</span><span><CalendarDays size={13}/>{isEn ? 'Target' : 'Meta'} {formatDate(implementation.dueAt, isEn)}</span></div>}
+            {applicationTasks.length ? <div className="it-scope-task-list">{applicationTasks.map(task => <button className="it-scope-work-item" key={task.id} onClick={() => onOpenRoadmap?.(task)}>
+              <div><strong>{task.phase}</strong><small>{task.description || (isEn ? 'Open task details' : 'Abrir detalle de la tarea')}</small><div className={`it-scope-task-progress ${task.status === 'BLOCKED' ? 'blocked' : task.status === 'COMPLETED' || Number(task.progress) >= 60 ? 'complete' : Number(task.progress) === 0 ? 'not-started' : 'in-progress'}`}><i style={{ width: `${Math.max(0, Math.min(100, Number(task.progress) || 0))}%` }}/></div></div>
+              <div className="it-scope-work-status"><span className={`it-pill ${task.priority.toLowerCase()}`}>{priorityLabel(task.priority, isEn)}</span><span className={`it-pill ${task.status.toLowerCase()}`}>{statusLabel(task.status, isEn)}</span><b>{task.progress}%</b></div><Pencil size={15}/>
+            </button>)}</div> : <p className="it-scope-empty-line">{isEn ? 'No IT task has been recorded for this application yet.' : 'Todavía no hay una tarea de IT registrada para esta aplicación.'}</p>}
+            {applicationTasks.length > 0 && <div className="it-scope-work-meta"><span><CalendarDays size={13}/>{isEn ? 'Latest update' : 'Última actualización'} {formatDate(applicationTasks[0].updatedAt, isEn)}</span><span><UserRound size={13}/>{isEn ? 'Owners' : 'Responsables'} {[...new Set(applicationTasks.map(task => task.owner).filter(Boolean))].join(', ') || (isEn ? 'Not assigned' : 'Sin asignar')}</span><span><CalendarDays size={13}/>{isEn ? 'Open tasks' : 'Tareas abiertas'} {applicationTasks.filter(task => task.status !== 'COMPLETED').length}</span></div>}
           </div>
           <div className="it-scope-modules"><div className="it-scope-subheading"><Wrench size={16}/><strong>{isEn ? 'Modules and tools' : 'Módulos y herramientas'}</strong></div>{scope.modules.map(module => {
             const moduleKey = `${scope.applicationId}:${module.id}`;

@@ -67,6 +67,7 @@ function openDatabase() {
       id TEXT PRIMARY KEY,
       application_id TEXT NOT NULL REFERENCES it_applications(id) ON DELETE CASCADE,
       phase TEXT NOT NULL,
+      task_description TEXT NOT NULL DEFAULT '',
       priority TEXT NOT NULL,
       progress INTEGER NOT NULL DEFAULT 0,
       status TEXT NOT NULL,
@@ -87,8 +88,7 @@ function openDatabase() {
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_by TEXT NOT NULL,
       created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      UNIQUE(application_id)
+      updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_it_roadmap_filters ON it_roadmap_items(application_id, owner, phase, priority, status);
     CREATE TABLE IF NOT EXISTS it_roadmap_history (
@@ -153,6 +153,7 @@ function openDatabase() {
     CREATE INDEX IF NOT EXISTS idx_it_scope_sync_events_application ON it_scope_sync_events(application_id, created_at);
   `);
   for (const statement of [
+    'ALTER TABLE it_roadmap_items ADD COLUMN task_description TEXT NOT NULL DEFAULT \'\'',
     "ALTER TABLE it_roadmap_items ADD COLUMN planned_environments_json TEXT NOT NULL DEFAULT '[]'",
     "ALTER TABLE it_roadmap_items ADD COLUMN verified_environments_json TEXT NOT NULL DEFAULT '[]'",
     'ALTER TABLE it_proposals ADD COLUMN idempotency_key TEXT',
@@ -160,9 +161,61 @@ function openDatabase() {
     'ALTER TABLE it_proposals ADD COLUMN due_at TEXT',
     'ALTER TABLE it_proposals ADD COLUMN completed_at TEXT',
   ]) { try { database.exec(statement); } catch {} }
+  migrateRoadmapTable(database);
   database.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_it_proposals_idempotency ON it_proposals(submitter_id, idempotency_key) WHERE idempotency_key IS NOT NULL');
   ensureCatalog(database);
   return database;
+}
+
+function migrateRoadmapTable(database) {
+  const schema = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'it_roadmap_items'").get()?.sql || '';
+  if (/UNIQUE\s*\(\s*application_id\s*\)/i.test(schema)) {
+    database.exec('PRAGMA foreign_keys = OFF');
+    database.exec('BEGIN');
+    try {
+      database.exec(`
+        CREATE TABLE it_roadmap_items_v2 (
+          id TEXT PRIMARY KEY,
+          application_id TEXT NOT NULL REFERENCES it_applications(id) ON DELETE CASCADE,
+          phase TEXT NOT NULL,
+          task_description TEXT NOT NULL DEFAULT '',
+          priority TEXT NOT NULL,
+          progress INTEGER NOT NULL DEFAULT 0,
+          status TEXT NOT NULL,
+          owner TEXT,
+          due_at TEXT,
+          milestones_json TEXT NOT NULL,
+          dependencies_json TEXT NOT NULL,
+          blockers_json TEXT NOT NULL,
+          next_actions_json TEXT NOT NULL,
+          integration_state TEXT NOT NULL,
+          monitoring_state TEXT NOT NULL,
+          last_verified_at TEXT,
+          evidence_reference TEXT,
+          evidence_source TEXT,
+          evidence_note TEXT,
+          planned_environments_json TEXT NOT NULL DEFAULT '[]',
+          verified_environments_json TEXT NOT NULL DEFAULT '[]',
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          created_by TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO it_roadmap_items_v2 (id,application_id,phase,task_description,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at)
+          SELECT id,application_id,phase,task_description,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at
+          FROM it_roadmap_items;
+        DROP TABLE it_roadmap_items;
+        ALTER TABLE it_roadmap_items_v2 RENAME TO it_roadmap_items;
+        CREATE INDEX IF NOT EXISTS idx_it_roadmap_filters ON it_roadmap_items(application_id, owner, phase, priority, status);
+      `);
+      database.exec('COMMIT');
+    } catch (error) {
+      database.exec('ROLLBACK');
+      throw error;
+    } finally {
+      database.exec('PRAGMA foreign_keys = ON');
+    }
+  }
 }
 
 function ensureCatalog(database) {
@@ -179,8 +232,8 @@ function ensureCatalog(database) {
     database.prepare(`INSERT OR IGNORE INTO it_applications (id,name,description_json,source,access_url,repository,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)`)
       .run(entry.id, entry.name, JSON.stringify(entry.description), entry.source, entry.accessUrl || null, entry.repository || null, timestamp, timestamp);
     const application = database.prepare('SELECT id FROM it_applications WHERE id = ?').get(entry.id);
-    database.prepare(`INSERT OR IGNORE INTO it_roadmap_items (id,application_id,phase,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-      .run(randomUUID(), application.id, 'Registered', 'MEDIUM', 0, 'NOT_STARTED', null, null, '[]', '[]', '[]', '[]', 'REGISTERED', 'NOT_CONNECTED', null, null, null, 'No verification evidence recorded.', '[]', '[]', index, 'system:catalog', timestamp, timestamp);
+    database.prepare(`INSERT OR IGNORE INTO it_roadmap_items (id,application_id,phase,task_description,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+      .run(randomUUID(), application.id, 'Registered', 'Application is registered in the IT catalog; add an actionable task when work begins.', 'MEDIUM', 0, 'NOT_STARTED', null, null, '[]', '[]', '[]', '[]', 'REGISTERED', 'NOT_CONNECTED', null, null, null, 'No verification evidence recorded.', '[]', '[]', index, 'system:catalog', timestamp, timestamp);
     const scopeEntry = applicationScopeById[entry.id];
     if (scopeEntry) {
       const normalizedScope = normalizeScope(scopeEntry);
@@ -261,7 +314,7 @@ function publicRoadmap(row) {
   const noEvidence = !row.last_verified_at;
   return {
     id: row.id, applicationId: row.application_id, applicationName: row.application_name, applicationSource: row.application_source, createdAt: row.created_at, createdBy: row.created_by || 'system:catalog',
-    accessUrl: row.access_url || '', repository: row.repository || '', phase: row.phase, priority: row.priority, progress: row.progress,
+    accessUrl: row.access_url || '', repository: row.repository || '', phase: row.phase, description: row.task_description || row.evidence_note || '', priority: row.priority, progress: row.progress,
     status: row.status, owner: row.owner || '', dueAt: row.due_at || '', milestones: parseJson(row.milestones_json), dependencies: parseJson(row.dependencies_json), blockers: parseJson(row.blockers_json), nextActions: parseJson(row.next_actions_json),
     integrationState: row.integration_state, monitoringState: row.monitoring_state, lastVerifiedAt: row.last_verified_at || '', evidence: { reference: row.evidence_reference || '', source: row.evidence_source || '', note: row.evidence_note || '' }, plannedEnvironments: parseJson(row.planned_environments_json), verifiedEnvironments: parseJson(row.verified_environments_json),
     attention: { blocked: row.status === 'BLOCKED', overdue, noRecentEvidence: noEvidence }, sortOrder: row.sort_order, updatedAt: row.updated_at,
@@ -335,7 +388,7 @@ export function syncItApplicationScope(payload, actorId = 'integration:applicati
 export function listItRoadmap(filters = {}) {
   const database = openDatabase();
   try {
-    let rows = database.prepare('SELECT r.*, a.name AS application_name, a.source AS application_source, a.access_url, a.repository FROM it_roadmap_items r JOIN it_applications a ON a.id = r.application_id ORDER BY r.sort_order, a.name').all();
+    let rows = database.prepare('SELECT r.*, a.name AS application_name, a.source AS application_source, a.access_url, a.repository FROM it_roadmap_items r JOIN it_applications a ON a.id = r.application_id ORDER BY a.name, r.sort_order, r.updated_at DESC').all();
     const query = clean(filters.query, 160).toLowerCase();
     rows = rows.filter(row => (!filters.applicationId || row.application_id === filters.applicationId) && (!filters.owner || row.owner === filters.owner) && (!filters.phase || row.phase === filters.phase) && (!filters.priority || row.priority === filters.priority) && (!filters.status || row.status === filters.status) && (!filters.integrationState || row.integration_state === filters.integrationState) && (!query || `${row.application_name} ${row.phase} ${row.owner || ''} ${row.evidence_note || ''}`.toLowerCase().includes(query)));
     return rows.map(publicRoadmap);
@@ -345,6 +398,7 @@ export function listItRoadmap(filters = {}) {
 function roadmapPayload(payload, current = {}) {
   const values = {
     phase: payload.phase === undefined ? current.phase || 'Registered' : safeText(payload.phase, 120),
+    description: payload.description === undefined ? current.task_description || '' : safeText(payload.description, 700, false),
     priority: payload.priority === undefined ? current.priority || 'MEDIUM' : enumValue(payload.priority, priorities, 'MEDIUM'),
     progress: payload.progress === undefined ? Number(current.progress || 0) : Math.max(0, Math.min(100, Number(payload.progress) || 0)),
     status: payload.status === undefined ? current.status || 'NOT_STARTED' : enumValue(payload.status, roadmapStatuses, 'NOT_STARTED'),
@@ -378,12 +432,10 @@ export function createItRoadmap(payload, actorId) {
   const database = openDatabase();
   try {
     if (!database.prepare('SELECT id FROM it_applications WHERE id = ?').get(applicationId)) { const error = new Error('Application is not registered in the IT catalog.'); error.statusCode = 404; throw error; }
-    const existing = database.prepare('SELECT id FROM it_roadmap_items WHERE application_id = ?').get(applicationId);
-    if (existing) { const error = new Error('This application already has a roadmap record.'); error.statusCode = 409; throw error; }
     const values = roadmapPayload(payload);
     const id = randomUUID(); const timestamp = now();
-    database.prepare('INSERT INTO it_roadmap_items (id,application_id,phase,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-      .run(id, applicationId, values.phase, values.priority, values.progress, values.status, values.owner, values.dueAt, json(values.milestones), json(values.dependencies), json(values.blockers), json(values.nextActions), values.integrationState, values.monitoringState, values.lastVerifiedAt, values.evidenceReference, values.evidenceSource, values.evidenceNote, json(values.plannedEnvironments), json(values.verifiedEnvironments), values.sortOrder, actorId, timestamp, timestamp);
+    database.prepare('INSERT INTO it_roadmap_items (id,application_id,phase,task_description,priority,progress,status,owner,due_at,milestones_json,dependencies_json,blockers_json,next_actions_json,integration_state,monitoring_state,last_verified_at,evidence_reference,evidence_source,evidence_note,planned_environments_json,verified_environments_json,sort_order,created_by,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .run(id, applicationId, values.phase, values.description, values.priority, values.progress, values.status, values.owner, values.dueAt, json(values.milestones), json(values.dependencies), json(values.blockers), json(values.nextActions), values.integrationState, values.monitoringState, values.lastVerifiedAt, values.evidenceReference, values.evidenceSource, values.evidenceNote, json(values.plannedEnvironments), json(values.verifiedEnvironments), values.sortOrder, actorId, timestamp, timestamp);
     audit(actorId, 'it_roadmap_created', id, { applicationId, changedFields: Object.keys(values) });
     return publicRoadmap(roadmapRow(database, id));
   } finally { database.close(); }
@@ -395,10 +447,10 @@ export function updateItRoadmap(id, payload, actorId) {
     const current = roadmapRow(database, id);
     if (!current) { const error = new Error('IT roadmap item not found.'); error.statusCode = 404; throw error; }
     const values = roadmapPayload(payload, current);
-    const changedFields = Object.keys(values).filter(key => JSON.stringify(values[key]) !== JSON.stringify(key === 'milestones' ? parseJson(current.milestones_json) : key === 'dependencies' ? parseJson(current.dependencies_json) : key === 'blockers' ? parseJson(current.blockers_json) : key === 'nextActions' ? parseJson(current.next_actions_json) : key === 'plannedEnvironments' ? parseJson(current.planned_environments_json) : key === 'verifiedEnvironments' ? parseJson(current.verified_environments_json) : key === 'dueAt' ? current.due_at || null : key === 'lastVerifiedAt' ? current.last_verified_at || null : key === 'evidenceReference' ? current.evidence_reference || null : key === 'evidenceSource' ? current.evidence_source || null : key === 'evidenceNote' ? current.evidence_note || null : key === 'sortOrder' ? current.sort_order : key === 'integrationState' ? current.integration_state : key === 'monitoringState' ? current.monitoring_state : key === 'owner' ? current.owner || null : current[key]));
+    const changedFields = Object.keys(values).filter(key => JSON.stringify(values[key]) !== JSON.stringify(key === 'description' ? current.task_description || '' : key === 'milestones' ? parseJson(current.milestones_json) : key === 'dependencies' ? parseJson(current.dependencies_json) : key === 'blockers' ? parseJson(current.blockers_json) : key === 'nextActions' ? parseJson(current.next_actions_json) : key === 'plannedEnvironments' ? parseJson(current.planned_environments_json) : key === 'verifiedEnvironments' ? parseJson(current.verified_environments_json) : key === 'dueAt' ? current.due_at || null : key === 'lastVerifiedAt' ? current.last_verified_at || null : key === 'evidenceReference' ? current.evidence_reference || null : key === 'evidenceSource' ? current.evidence_source || null : key === 'evidenceNote' ? current.evidence_note || null : key === 'sortOrder' ? current.sort_order : key === 'integrationState' ? current.integration_state : key === 'monitoringState' ? current.monitoring_state : key === 'owner' ? current.owner || null : current[key]));
     const timestamp = now();
-    database.prepare('UPDATE it_roadmap_items SET phase=?,priority=?,progress=?,status=?,owner=?,due_at=?,milestones_json=?,dependencies_json=?,blockers_json=?,next_actions_json=?,integration_state=?,monitoring_state=?,last_verified_at=?,evidence_reference=?,evidence_source=?,evidence_note=?,planned_environments_json=?,verified_environments_json=?,sort_order=?,updated_at=? WHERE id=?')
-      .run(values.phase, values.priority, values.progress, values.status, values.owner, values.dueAt, json(values.milestones), json(values.dependencies), json(values.blockers), json(values.nextActions), values.integrationState, values.monitoringState, values.lastVerifiedAt, values.evidenceReference, values.evidenceSource, values.evidenceNote, json(values.plannedEnvironments), json(values.verifiedEnvironments), values.sortOrder, timestamp, id);
+    database.prepare('UPDATE it_roadmap_items SET phase=?,task_description=?,priority=?,progress=?,status=?,owner=?,due_at=?,milestones_json=?,dependencies_json=?,blockers_json=?,next_actions_json=?,integration_state=?,monitoring_state=?,last_verified_at=?,evidence_reference=?,evidence_source=?,evidence_note=?,planned_environments_json=?,verified_environments_json=?,sort_order=?,updated_at=? WHERE id=?')
+      .run(values.phase, values.description, values.priority, values.progress, values.status, values.owner, values.dueAt, json(values.milestones), json(values.dependencies), json(values.blockers), json(values.nextActions), values.integrationState, values.monitoringState, values.lastVerifiedAt, values.evidenceReference, values.evidenceSource, values.evidenceNote, json(values.plannedEnvironments), json(values.verifiedEnvironments), values.sortOrder, timestamp, id);
     database.prepare('INSERT INTO it_roadmap_history (id,roadmap_id,actor_id,changed_fields_json,created_at) VALUES (?,?,?,?,?)').run(randomUUID(), id, actorId, JSON.stringify(changedFields), timestamp);
     audit(actorId, 'it_roadmap_updated', id, { changedFields, status: values.status, integrationState: values.integrationState });
     return publicRoadmap(roadmapRow(database, id));
